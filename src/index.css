@@ -1,0 +1,65 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --adrock-black: #050505;
+  --adrock-orange: #ff940e;
+  --adrock-red: #ff0e03;
+  --adrock-sky: #c1d6e9;
+  --adrock-cream: #fffdf8;
+  --adrock-ink: #171717;
+  --adrock-muted: #5f6773;
+  --adrock-shadow: 0 24px 70px rgba(193, 214, 233, 0.32);
+}
+
+html {
+  color-scheme: light;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  color: var(--adrock-ink);
+  font-family: Inter, system-ui, sans-serif;
+  background:
+    radial-gradient(circle at top left, rgba(193, 214, 233, 0.48), transparent 28%),
+    linear-gradient(180deg, #fffdf8 0%, #f7f7f5 52%, #f3f4f6 100%);
+}
+
+#root {
+  min-height: 100vh;
+}
+
+@layer utilities {
+  .bg-adrock-surface {
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(255, 248, 239, 0.96));
+    box-shadow: var(--adrock-shadow);
+  }
+
+  .adrock-form-shell input:not([type='checkbox']),
+  .adrock-form-shell select,
+  .adrock-form-shell textarea {
+    border-radius: 1rem !important;
+    border: 1px solid rgba(193, 214, 233, 0.92) !important;
+    background: rgba(255, 255, 255, 0.92) !important;
+    color: #161616 !important;
+    box-shadow: none !important;
+  }
+
+  .adrock-form-shell input:not([type='checkbox']):focus,
+  .adrock-form-shell select:focus,
+  .adrock-form-shell textarea:focus {
+    border-color: rgba(255, 148, 14, 0.92) !important;
+    box-shadow: 0 0 0 3px rgba(255, 148, 14, 0.18) !important;
+  }
+
+  .adrock-field-label {
+    color: #4b5563;
+  }
+
+  .adrock-list-card {
+    border: 1px solid rgba(193, 214, 233, 0.9);
+    background: rgba(255, 255, 255, 0.88);
+  }
+}

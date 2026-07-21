@@ -1,0 +1,812 @@
+import React, { useEffect, useMemo, useState } from 'react';
+import { CheckCircle, ChevronDown, ChevronUp, Copy, Info, Link2, Save, Search, Sparkles, XCircle } from 'lucide-react';
+import { buildGeneratedUrl, CHANNEL_PRESETS, CHANNEL_RULES, type ChannelPreset, type UTMParams, UTM_FIELD_GUIDES, inferPresetFromValues, normalizeUtmValue, validateUrlString, validateUtmParams } from '../utils/utm';
+import type { CampaignRecord, ChannelPresetRecord, SaveLinkPayload, SelectOptionRecord } from '../types';
+
+const emptyParams: UTMParams = {
+  url: '',
+  source: '',
+  medium: '',
+  campaign: '',
+  term: '',
+  content: '',
+  id: ''
+};
+
+interface UTMBuilderProps {
+  campaigns?: CampaignRecord[];
+  channelPresets?: ChannelPresetRecord[];
+  actionTypeOptions?: SelectOptionRecord[];
+  destinationTypeOptions?: SelectOptionRecord[];
+  adTypeOptions?: SelectOptionRecord[];
+  utmIdOptions?: SelectOptionRecord[];
+  onCreateCampaignRequest?: () => void;
+  onSaveLink?: (payload: SaveLinkPayload) => Promise<void>;
+  isSaving?: boolean;
+}
+
+const fallbackActionTypeOptions = [
+  'post_patrocinado',
+  'banner_portal',
+  'newsletter',
+  'email_fluxo',
+  'paid_social',
+  'paid_search',
+  'parceria'
+];
+
+const fallbackDestinationTypeOptions = ['lp', 'landing_page', 'site', 'blog', 'whatsapp'];
+const fallbackAdTypeOptions = [
+  'whatsapp_canal',
+  'whatsapp_comunidade_socioemocional',
+  'whatsapp_comunidade_antirracista',
+  'whatsapp_comunidade_tecnologia',
+  'whatsapp_comunidade_metodologias_ativas',
+  'newsletter_semanal',
+  'newsletter_gestao',
+  'newsletter_comercial',
+  'instagram',
+  'facebook',
+  'linkedin',
+  'video',
+  'landing_page',
+  'infografico',
+  'materia',
+  'ebook',
+  'webstory',
+  'podcast',
+  'jogo',
+  'webinario',
+  'text_ad',
+  'image_ad',
+  'story_ad',
+  'lead_ad',
+  'video_ad',
+  'display_ad',
+  'shopping_ad'
+];
+const fallbackUtmIdOptions = [
+  'curso_ed_antirracista_fundamentos',
+  'curso_ed_antirracista_praticas',
+  'material_rap_feminino',
+  'curso_comp_digitais_lp_em',
+  'lp_ebook_enem'
+];
+
+const UTMBuilder: React.FC<UTMBuilderProps> = ({
+  campaigns = [],
+  channelPresets = CHANNEL_PRESETS,
+  actionTypeOptions = [],
+  destinationTypeOptions = [],
+  adTypeOptions = [],
+  utmIdOptions = [],
+  onCreateCampaignRequest,
+  onSaveLink,
+  isSaving = false
+}) => {
+  const activeChannelPresets = channelPresets.filter((preset) => preset.isActive !== false);
+  const resolvedChannelPresets = activeChannelPresets.length > 0 ? activeChannelPresets : CHANNEL_PRESETS;
+  const resolvedActionTypeOptions = actionTypeOptions.filter((option) => option.isActive).length > 0
+    ? actionTypeOptions.filter((option) => option.isActive)
+    : fallbackActionTypeOptions.map((value) => ({ id: value, category: 'action_type' as const, value, label: value, sortOrder: 0, isActive: true }));
+  const resolvedDestinationTypeOptions = destinationTypeOptions.filter((option) => option.isActive).length > 0
+    ? destinationTypeOptions.filter((option) => option.isActive)
+    : fallbackDestinationTypeOptions.map((value) => ({ id: value, category: 'destination_type' as const, value, label: value, sortOrder: 0, isActive: true }));
+  const resolvedAdTypeOptions = adTypeOptions.filter((option) => option.isActive).length > 0
+    ? adTypeOptions.filter((option) => option.isActive)
+    : fallbackAdTypeOptions.map((value) => ({ id: value, category: 'ad_type' as const, value, label: value, sortOrder: 0, isActive: true }));
+  const resolvedUtmIdOptions = utmIdOptions.filter((option) => option.isActive).length > 0
+    ? utmIdOptions.filter((option) => option.isActive)
+    : fallbackUtmIdOptions.map((value) => ({ id: value, category: 'utm_id' as const, value, label: value, sortOrder: 0, isActive: true }));
+  const [showInstructions, setShowInstructions] = useState(false);
+  const [activeTab, setActiveTab] = useState<'builder' | 'validator' | 'rules'>('builder');
+  const [selectedPresetId, setSelectedPresetId] = useState<string>(resolvedChannelPresets[0].id);
+  const [utmParams, setUtmParams] = useState<UTMParams>({
+    ...emptyParams,
+    source: resolvedChannelPresets[0].defaultSource,
+    medium: resolvedChannelPresets[0].defaultMedium
+  });
+  const [preloadUrl, setPreloadUrl] = useState('');
+  const [generatedURL, setGeneratedURL] = useState('');
+  const [urlToValidate, setUrlToValidate] = useState('');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [contextType, setContextType] = useState<'pontual' | 'campanha'>('pontual');
+  const [selectedCampaignId, setSelectedCampaignId] = useState('');
+  const [adGroupName, setAdGroupName] = useState('');
+  const [adType, setAdType] = useState(resolvedAdTypeOptions[0].value);
+  const [internalName, setInternalName] = useState('');
+  const [actionType, setActionType] = useState(resolvedActionTypeOptions[0].value);
+  const [destinationType, setDestinationType] = useState(resolvedDestinationTypeOptions[0].value);
+  const [notes, setNotes] = useState('');
+
+  useEffect(() => {
+    const preset = resolvedChannelPresets.find((item) => item.id === selectedPresetId) || resolvedChannelPresets[0];
+    setSelectedPresetId(preset.id);
+    setUtmParams((current) => ({
+      ...current,
+      source: preset.sources.includes(current.source) ? current.source : preset.defaultSource,
+      medium: preset.mediums.includes(current.medium) ? current.medium : preset.defaultMedium
+    }));
+  }, [channelPresets]);
+
+  useEffect(() => {
+    if (!resolvedActionTypeOptions.some((option) => option.value === actionType)) {
+      setActionType(resolvedActionTypeOptions[0].value);
+    }
+    if (!resolvedDestinationTypeOptions.some((option) => option.value === destinationType)) {
+      setDestinationType(resolvedDestinationTypeOptions[0].value);
+    }
+    if (!resolvedAdTypeOptions.some((option) => option.value === adType)) {
+      setAdType(resolvedAdTypeOptions[0].value);
+    }
+  }, [actionTypeOptions, destinationTypeOptions, adTypeOptions]);
+
+  const selectedPreset = useMemo<ChannelPreset | undefined>(() => resolvedChannelPresets.find((preset) => preset.id === selectedPresetId), [resolvedChannelPresets, selectedPresetId]);
+  const builderValidation = useMemo(() => validateUtmParams(utmParams, selectedPresetId, resolvedChannelPresets), [utmParams, selectedPresetId, resolvedChannelPresets]);
+  const validatorResult = useMemo(() => (urlToValidate.trim() ? validateUrlString(urlToValidate) : null), [urlToValidate]);
+  const filteredRules = CHANNEL_RULES.filter((rule) =>
+    rule.channel.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    rule.rule.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    rule.description.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+  const livePreview = useMemo(() => buildLivePreviewUrl(utmParams), [utmParams]);
+  const isWhatsAppDestination = useMemo(() => isWhatsAppUrl(utmParams.url), [utmParams.url]);
+  const selectedCampaign = campaigns.find((campaign) => campaign.id === selectedCampaignId);
+  const resetBuilderForm = () => {
+    const preset = resolvedChannelPresets[0];
+    setSelectedPresetId(preset.id);
+    setUtmParams({
+      ...emptyParams,
+      source: preset.defaultSource,
+      medium: preset.defaultMedium
+    });
+    setGeneratedURL('');
+    setContextType('pontual');
+    setSelectedCampaignId('');
+    setAdGroupName('');
+    setAdType(resolvedAdTypeOptions[0].value);
+    setInternalName('');
+    setActionType(resolvedActionTypeOptions[0].value);
+    setDestinationType(resolvedDestinationTypeOptions[0].value);
+    setNotes('');
+    setPreloadUrl('');
+  };
+
+  const handlePresetChange = (presetId: string) => {
+    const preset = resolvedChannelPresets.find((item) => item.id === presetId);
+    if (!preset) return;
+
+    setSelectedPresetId(presetId);
+    setUtmParams((current) => ({
+      ...current,
+      source: preset.sources.includes(current.source) ? current.source : preset.defaultSource,
+      medium: preset.mediums.includes(current.medium) ? current.medium : preset.defaultMedium
+    }));
+  };
+
+  const handleParamChange = (field: keyof UTMParams, value: string) => {
+    setUtmParams((current) => ({
+      ...current,
+      [field]: value
+    }));
+  };
+
+  const preloadParametrizedUrl = () => {
+    try {
+      const parsed = parseParametrizedUrl(preloadUrl);
+      const inferredPreset = inferPresetFromValues(parsed.source, parsed.medium, resolvedChannelPresets);
+
+      if (inferredPreset) {
+        setSelectedPresetId(inferredPreset.id);
+      }
+
+      setUtmParams(parsed);
+      setGeneratedURL('');
+    } catch {
+      alert('Cole uma URL parametrizada válida para carregar os campos.');
+    }
+  };
+
+  const generateURL = () => {
+    if (!livePreview || !isLiveValid) {
+      alert('Revise os campos obrigatórios e os erros do padrão antes de gerar a URL.');
+      return;
+    }
+
+    setGeneratedURL(livePreview);
+  };
+
+  const copyToClipboard = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      alert('URL copiada!');
+    } catch {
+      alert('Erro ao copiar URL');
+    }
+  };
+
+  const handleSaveLink = async () => {
+    if (!onSaveLink) return;
+    if (!generatedURL) {
+      alert('Gere a URL antes de salvar.');
+      return;
+    }
+    if (!internalName.trim()) {
+      alert('Defina um nome interno para o link.');
+      return;
+    }
+    if (contextType !== 'pontual' && !selectedCampaignId) {
+      alert('Selecione a campanha relacionada.');
+      return;
+    }
+    if (contextType !== 'pontual' && !adGroupName.trim()) {
+      alert('Informe o grupo de anúncio para este link de campanha.');
+      return;
+    }
+
+    await onSaveLink({
+      campaignId: contextType === 'pontual' ? null : selectedCampaignId,
+      baseUrl: utmParams.url,
+      utmSource: utmParams.source,
+      utmMedium: utmParams.medium,
+      utmCampaign: utmParams.campaign,
+      utmTerm: utmParams.term,
+      utmContent: utmParams.content,
+      utmId: utmParams.id,
+      finalUrl: generatedURL,
+      internalName: internalName.trim(),
+      actionType,
+      destinationType,
+      adGroupName: adGroupName.trim(),
+      adType,
+      notes: notes.trim()
+    });
+
+    resetBuilderForm();
+  };
+
+  const isExternalActionsPreset = selectedPresetId === 'external-actions';
+  const relatedCampaignOptions = campaigns.filter((campaign) => campaign.type === contextType);
+  const liveChecks = [
+    {
+      label: 'URL base',
+      ok: Boolean(utmParams.url.trim()),
+      message: utmParams.url.trim() ? 'Informada.' : 'Informe a página de destino.'
+    },
+    {
+      label: 'utm_source',
+      ok: Boolean(utmParams.source.trim()),
+      message: utmParams.source.trim() ? 'Origem preenchida.' : 'Preencha a origem do tráfego.'
+    },
+    {
+      label: 'utm_medium',
+      ok: Boolean(utmParams.medium.trim()),
+      message: utmParams.medium.trim() ? 'Medium preenchido.' : 'Selecione ou preencha o medium.'
+    },
+    {
+      label: 'utm_campaign',
+      ok: Boolean(utmParams.campaign.trim()),
+      message: utmParams.campaign.trim() ? 'Campanha preenchida.' : 'Preencha ou selecione uma campanha.'
+    },
+    ...(contextType === 'campanha' ? [
+      {
+        label: 'Campanha cadastrada',
+        ok: Boolean(selectedCampaignId),
+        message: selectedCampaignId ? 'Link vinculado a uma campanha.' : 'Selecione uma campanha já criada.'
+      },
+      {
+        label: 'Grupo de anúncio',
+        ok: Boolean(adGroupName.trim()),
+        message: adGroupName.trim() ? 'Vai preencher o utm_term.' : 'Informe o grupo de anúncio quando existir.'
+      },
+      {
+        label: 'utm_content',
+        ok: Boolean(utmParams.content.trim()),
+        message: utmParams.content.trim() ? 'Conteúdo/peça preenchido.' : 'Selecione ou escreva o conteúdo/peça.'
+      }
+    ] : [])
+  ];
+  const campaignContextErrors = contextType === 'campanha'
+    ? [
+      ...(!selectedCampaignId ? ['Selecione uma campanha cadastrada.'] : []),
+      ...(!adGroupName.trim() ? ['Informe o grupo de anúncio para preencher o utm_term.'] : [])
+    ]
+    : [];
+  const liveBlockingErrors = [
+    ...builderValidation.errors.map((error) => error.message),
+    ...campaignContextErrors
+  ];
+  const isLiveValid = Boolean(livePreview) && builderValidation.isValid && campaignContextErrors.length === 0;
+  const statusTone = isLiveValid
+    ? builderValidation.warnings.length > 0
+      ? 'border-yellow-200 bg-yellow-50 text-yellow-900'
+      : 'border-green-200 bg-green-50 text-green-900'
+    : 'border-red-200 bg-red-50 text-red-900';
+
+  const handleCampaignChange = (campaignId: string) => {
+    setSelectedCampaignId(campaignId);
+    const campaign = campaigns.find((item) => item.id === campaignId);
+    if (campaign) {
+      handleParamChange('campaign', campaign.slug);
+    }
+  };
+
+  const handleAdGroupChange = (value: string) => {
+    setAdGroupName(value);
+    handleParamChange('term', normalizeUtmValue(value));
+  };
+
+  const syncContentNotes = (value: string) => {
+    const normalizedValue = normalizeUtmValue(value);
+    setNotes((current) => {
+      const keptLines = current
+        .split('\n')
+        .filter((line) => !line.toLowerCase().startsWith('utm_content:'));
+
+      if (!normalizedValue) {
+        return keptLines.join('\n').trim();
+      }
+
+      return [...keptLines, `utm_content: ${normalizedValue}`].join('\n').trim();
+    });
+  };
+
+  const handleContentValueChange = (value: string) => {
+    const normalizedValue = normalizeUtmValue(value);
+    setAdType(value);
+    handleParamChange('content', normalizedValue);
+    syncContentNotes(value);
+  };
+
+  const handleUtmIdValueChange = (value: string) => {
+    handleParamChange('id', normalizeUtmValue(value));
+  };
+
+  return (
+    <div className="adrock-form-shell space-y-6">
+      <div className="rounded-[1.5rem] border border-[#c1d6e9] bg-[#f4f8fc]">
+        <button onClick={() => setShowInstructions(!showInstructions)} className="flex w-full items-center justify-between p-4 text-left">
+          <div className="flex items-center space-x-2">
+            <Info className="h-5 w-5 text-[#ff940e]" />
+            <span className="font-medium text-gray-900">UTM Builder para Google Analytics 4</span>
+          </div>
+          {showInstructions ? <ChevronUp className="h-5 w-5 text-[#ff940e]" /> : <ChevronDown className="h-5 w-5 text-[#ff940e]" />}
+        </button>
+        {showInstructions && (
+          <div className="space-y-3 px-4 pb-4 text-sm text-gray-800">
+            <div>
+              <h4 className="font-semibold">Criar URLs com padrão operacional</h4>
+              <p>Escolha um canal GA4, use mediums controlados e siga exemplos curtos para manter a leitura das campanhas consistente.</p>
+            </div>
+            <div>
+              <h4 className="font-semibold">Validar UTMs existentes</h4>
+              <p>Cole uma URL e veja erros, avisos, valores normalizados e o agrupamento de canal esperado no GA4.</p>
+            </div>
+            <div>
+              <h4 className="font-semibold">Governança do produto</h4>
+              <p>Nesta versão standalone, o link já pode nascer como item pontual ou vinculado a campanha e grupo de ações para não perder contexto depois.</p>
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="bg-adrock-surface rounded-[1.75rem] border border-black/5">
+        <div className="border-b border-black/10">
+          <nav className="flex space-x-8 px-6">
+            {[
+              { id: 'builder' as const, name: 'Criar URLs para GA4', icon: Link2 },
+              { id: 'validator' as const, name: 'Validar UTMs', icon: CheckCircle },
+              { id: 'rules' as const, name: 'Regras de Canal GA4', icon: Search }
+            ].map((tab) => {
+              const Icon = tab.icon;
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`flex items-center space-x-2 border-b-2 px-1 py-4 text-sm font-medium ${
+                    activeTab === tab.id ? 'border-[#ff940e] text-[#ff940e]' : 'border-transparent text-gray-500'
+                  }`}
+                >
+                  <Icon className="h-4 w-4" />
+                  <span>{tab.name}</span>
+                </button>
+              );
+            })}
+          </nav>
+        </div>
+
+        <div className="p-6">
+          {activeTab === 'builder' && (
+            <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_380px]">
+              <div className="space-y-6">
+                {isExternalActionsPreset && (
+                  <div className="rounded-2xl border border-[#ffcf92] bg-[#fff5e8] p-4">
+                    <h4 className="font-semibold text-gray-900">Quando usar este preset</h4>
+                    <p className="mt-2 text-sm text-gray-700">Use em ações patrocinadas publicadas em sites de terceiros, veículos, órgãos, blogs parceiros ou portais institucionais que mandam o clique para uma LP, site ou página da campanha.</p>
+                  </div>
+                )}
+
+                <div className="rounded-2xl border border-[#c1d6e9] bg-[#f8fbff] p-4">
+                  <h3 className="text-lg font-medium text-gray-900">Contexto do link</h3>
+                  <p className="mt-1 text-sm text-gray-600">Escolha se este link é pontual ou se deve nascer ligado a uma governança de campanha.</p>
+                  <div className="mt-4 grid gap-3 md:grid-cols-2">
+                    {[
+                      { value: 'pontual', label: 'Link pontual' },
+                      { value: 'campanha', label: 'Campanha' }
+                    ].map((option) => (
+                      <button
+                        key={option.value}
+                        type="button"
+                        onClick={() => {
+                          setContextType(option.value as typeof contextType);
+                          setSelectedCampaignId('');
+                          setAdGroupName('');
+                        }}
+                        className={`rounded-2xl border px-4 py-3 text-left text-sm ${
+                          contextType === option.value
+                            ? 'border-[#ff940e] bg-[#fff1db] text-[#9a4a00]'
+                            : 'border-[#c1d6e9] bg-white text-gray-700'
+                        }`}
+                      >
+                        {option.label}
+                      </button>
+                    ))}
+                  </div>
+                  {contextType !== 'pontual' && (
+                    <div className="mt-4 space-y-4">
+                      <div className="rounded-2xl border border-[#ffcf92] bg-[#fff8ef] p-4">
+                        <h4 className="font-semibold text-gray-900">Você já criou a campanha?</h4>
+                        <p className="mt-1 text-sm text-gray-700">
+                          Para link por campanha, primeiro selecione uma campanha já cadastrada. Se ela ainda não existe, cadastre na aba Campanhas e volte para gerar os UTMs.
+                        </p>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {onCreateCampaignRequest && (
+                            <button type="button" onClick={onCreateCampaignRequest} className="rounded-xl border border-[#ff940e] bg-white px-3 py-2 text-sm font-medium text-[#9a4a00]">
+                              Não, cadastrar campanha
+                            </button>
+                          )}
+                          <span className="rounded-xl bg-white px-3 py-2 text-sm text-gray-600">
+                            Sim, selecione abaixo
+                          </span>
+                        </div>
+                      </div>
+                      <div>
+                        <label className="adrock-field-label mb-1 block text-sm font-medium">Campanha selecionada</label>
+                        <select value={selectedCampaignId} onChange={(e) => handleCampaignChange(e.target.value)} className="w-full px-3 py-2">
+                          <option value="">Selecione uma campanha cadastrada</option>
+                          {relatedCampaignOptions.map((campaign) => (
+                            <option key={campaign.id} value={campaign.id}>{campaign.name}</option>
+                          ))}
+                        </select>
+                        {relatedCampaignOptions.length === 0 && (
+                          <p className="mt-2 text-xs text-[#9a4a00]">Nenhuma campanha cadastrada ainda. Cadastre uma campanha antes de vincular este link.</p>
+                        )}
+                        {selectedCampaign && (
+                          <p className="mt-2 text-xs text-gray-600">
+                            Este link usará <strong>{selectedCampaign.slug}</strong> no utm_campaign.
+                          </p>
+                        )}
+                      </div>
+                      <div>
+                        <div>
+                          <label className="adrock-field-label mb-1 block text-sm font-medium">Grupo de anúncio</label>
+                          <input type="text" value={adGroupName} onChange={(e) => handleAdGroupChange(e.target.value)} className="w-full px-3 py-2" placeholder="ex: remarketing_30d" />
+                          <p className="mt-2 text-xs text-gray-600">Preenche o utm_term.</p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+              <div className="rounded-2xl border border-[#c1d6e9] bg-white p-4">
+                <h3 className="text-lg font-medium text-gray-900">Carregar URL já parametrizada</h3>
+                <p className="mt-1 text-sm text-gray-600">
+                  Cole uma URL pronta para reaproveitar os mesmos parâmetros e alterar apenas os campos necessários no próximo link.
+                </p>
+                <textarea
+                  value={preloadUrl}
+                  onChange={(event) => setPreloadUrl(event.target.value)}
+                  rows={3}
+                  className="mt-4 w-full px-3 py-2"
+                  placeholder="https://cliente.com/pagina?utm_source=newsletter&utm_medium=email&utm_campaign=ec_2026_junho&utm_term=email_58_trap_texto_d1&utm_content=curso_comp_digital_lp_em&utm_id=texto_01"
+                />
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={preloadParametrizedUrl}
+                    className="rounded-xl border border-[#ff940e] bg-[#fff8ef] px-3 py-2 text-sm font-medium text-[#9a4a00]"
+                  >
+                    Carregar campos
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPreloadUrl('')}
+                    className="rounded-xl border border-[#c1d6e9] bg-white px-3 py-2 text-sm font-medium text-gray-700"
+                  >
+                    Limpar URL colada
+                  </button>
+                </div>
+              </div>
+
+              <h3 className="text-lg font-medium text-gray-900">Criar URL com parâmetros UTM</h3>
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <div className="md:col-span-2">
+                  <label className="adrock-field-label mb-1 block text-sm font-medium">URL Base *</label>
+                  <input type="url" value={utmParams.url} onChange={(e) => handleParamChange('url', e.target.value)} className="w-full px-3 py-2" placeholder="https://cliente.com/produto" />
+                  <p className="mt-1 text-xs text-gray-500">Exemplo: `https://cliente.com/landing-page`</p>
+                  {isWhatsAppDestination && (
+                    <div className="mt-3 rounded-2xl border border-yellow-200 bg-yellow-50 p-3 text-sm text-yellow-900">
+                      <strong>Atenção:</strong> links para WhatsApp normalmente não precisam de UTM. Quando a pessoa sai do site e cai no WhatsApp, os parâmetros não são enviados para o GA4 como navegação da página de destino.
+                    </div>
+                  )}
+                </div>
+                <div className="rounded-2xl border border-[#c1d6e9] bg-[#f4f8fc] p-4">
+                  <label className="adrock-field-label mb-2 block text-sm font-medium">Canal GA4 guiado</label>
+                  <select value={selectedPresetId} onChange={(e) => handlePresetChange(e.target.value)} className="w-full px-3 py-2">
+                    {resolvedChannelPresets.map((preset) => (
+                      <option key={preset.id} value={preset.id}>{preset.label}</option>
+                    ))}
+                  </select>
+                  <p className="mt-2 text-xs text-gray-600">{selectedPreset?.description}</p>
+                </div>
+                <div className="rounded-2xl border border-[#c1d6e9] bg-[#f4f8fc] p-4">
+                  <p className="adrock-field-label text-sm font-medium">Padrão sugerido</p>
+                  <p className="mt-2 text-sm text-gray-800"><strong>Sources recomendadas:</strong> {selectedPreset?.sources.join(', ')}</p>
+                  <p className="mt-1 text-sm text-gray-800"><strong>Mediums permitidos:</strong> {selectedPreset?.mediums.join(', ')}</p>
+                </div>
+                <div>
+                  <label className="adrock-field-label mb-1 block text-sm font-medium">Campaign Source (utm_source) *</label>
+                  <input list="utm-source-suggestions" type="text" value={utmParams.source} onChange={(e) => handleParamChange('source', e.target.value)} className="w-full px-3 py-2" placeholder={selectedPreset?.defaultSource || 'google'} />
+                  <datalist id="utm-source-suggestions">
+                    {(selectedPreset?.sources || []).map((source) => <option key={source} value={source} />)}
+                  </datalist>
+                  <p className="mt-1 text-xs text-gray-500">{UTM_FIELD_GUIDES.find((guide) => guide.key === 'source')?.helper}</p>
+                  <p className="mt-1 text-xs text-gray-500">Exemplo: {UTM_FIELD_GUIDES.find((guide) => guide.key === 'source')?.example}</p>
+                </div>
+                <div>
+                  <label className="adrock-field-label mb-1 block text-sm font-medium">Campaign Medium (utm_medium) *</label>
+                  <select value={utmParams.medium} onChange={(e) => handleParamChange('medium', e.target.value)} className="w-full px-3 py-2">
+                    {(selectedPreset?.mediums || []).map((medium) => <option key={medium} value={medium}>{medium}</option>)}
+                  </select>
+                  <p className="mt-1 text-xs text-gray-500">{UTM_FIELD_GUIDES.find((guide) => guide.key === 'medium')?.helper}</p>
+                </div>
+                {UTM_FIELD_GUIDES.filter((guide) => !['source', 'medium'].includes(guide.key)).map((guide) => (
+                  <div key={guide.key}>
+                    <label className="adrock-field-label mb-1 block text-sm font-medium">{guide.label}{guide.required ? ' *' : ''}</label>
+                    {guide.key === 'content' ? (
+                      <div className="space-y-2">
+                        <select value={resolvedAdTypeOptions.some((option) => option.value === adType) ? adType : ''} onChange={(e) => handleContentValueChange(e.target.value)} className="w-full px-3 py-2">
+                          <option value="">Selecionar sugestão</option>
+                          {resolvedAdTypeOptions.map((option) => <option key={option.id} value={option.value}>{option.label}</option>)}
+                        </select>
+                        <input
+                          type="text"
+                          value={utmParams.content}
+                          onChange={(e) => handleContentValueChange(e.target.value)}
+                          className="w-full px-3 py-2"
+                          placeholder="Ou escreva um utm_content próprio"
+                        />
+                      </div>
+                    ) : guide.key === 'id' ? (
+                      <div className="space-y-2">
+                        <select value={resolvedUtmIdOptions.some((option) => option.value === utmParams.id) ? utmParams.id : ''} onChange={(e) => handleUtmIdValueChange(e.target.value)} className="w-full px-3 py-2">
+                          <option value="">Selecionar sugestão</option>
+                          {resolvedUtmIdOptions.map((option) => <option key={option.id} value={option.value}>{option.label}</option>)}
+                        </select>
+                        <input
+                          type="text"
+                          value={utmParams.id}
+                          onChange={(e) => handleUtmIdValueChange(e.target.value)}
+                          className="w-full px-3 py-2"
+                          placeholder="Ou escreva um utm_id próprio"
+                        />
+                      </div>
+                    ) : (
+                      <input type="text" value={utmParams[guide.key]} onChange={(e) => handleParamChange(guide.key, e.target.value)} className="w-full px-3 py-2" placeholder={guide.example} />
+                    )}
+                    <div className="mt-1 flex items-center justify-between gap-2 text-xs text-gray-500">
+                      <span>{guide.helper} Exemplo: {guide.example}</span>
+                      <span>{utmParams[guide.key].length}/{guide.recommendedMax}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <div>
+                  <label className="adrock-field-label mb-1 block text-sm font-medium">Nome interno do link *</label>
+                  <input type="text" value={internalName} onChange={(e) => setInternalName(e.target.value)} className="w-full px-3 py-2" placeholder="post_patrocinado_secretaria_mg" />
+                </div>
+                <div>
+                  <label className="adrock-field-label mb-1 block text-sm font-medium">Tipo de ação</label>
+                  <select value={actionType} onChange={(e) => setActionType(e.target.value)} className="w-full px-3 py-2">
+                    {resolvedActionTypeOptions.map((option) => <option key={option.id} value={option.value}>{option.label}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="adrock-field-label mb-1 block text-sm font-medium">Destino</label>
+                  <select value={destinationType} onChange={(e) => setDestinationType(e.target.value)} className="w-full px-3 py-2">
+                    {resolvedDestinationTypeOptions.map((option) => <option key={option.id} value={option.value}>{option.label}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="adrock-field-label mb-1 block text-sm font-medium">Observações</label>
+                  <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={3} className="w-full px-3 py-2" placeholder="Contexto operacional, placement, restrição do parceiro..." />
+                </div>
+              </div>
+
+              <div className="flex flex-wrap gap-3">
+                <button onClick={generateURL} className="rounded-2xl bg-[linear-gradient(135deg,#ff940e_0%,#ff0e03_100%)] px-6 py-3 text-white shadow-[0_18px_38px_rgba(255,14,3,0.18)]">Gerar URL</button>
+                {onSaveLink && (
+                  <button
+                    onClick={handleSaveLink}
+                    disabled={isSaving || !generatedURL}
+                    className="inline-flex items-center rounded-2xl border border-[#ff940e] px-6 py-3 text-[#ff940e] disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <Save className="mr-2 h-4 w-4" />
+                    {isSaving ? 'Salvando...' : 'Salvar link'}
+                  </button>
+                )}
+              </div>
+
+              {generatedURL && (
+                <div className="rounded-2xl border border-[#ff940e]/30 bg-[#fff6e9] p-4">
+                  <div className="mb-2 flex items-start justify-between">
+                    <div>
+                      <h4 className="font-medium text-gray-900">URL gerada</h4>
+                      <p className="mt-2 rounded-xl border border-green-200 bg-green-50 px-3 py-2 text-sm font-semibold text-green-800">
+                        Confira o link parametrizado abaixo se estiver ok clique no botão Salvar link
+                      </p>
+                    </div>
+                    <button onClick={() => copyToClipboard(generatedURL)} className="text-[#ff940e] hover:text-[#ff6a00]"><Copy className="h-5 w-5" /></button>
+                  </div>
+                  <p className="break-all text-sm leading-relaxed text-gray-800">{generatedURL}</p>
+                </div>
+              )}
+              </div>
+
+              <aside className="space-y-4 xl:sticky xl:top-6">
+                <div className="rounded-2xl border border-red-200 bg-red-50 p-4">
+                  <h4 className="font-semibold text-red-900">Erros</h4>
+                  {liveBlockingErrors.length > 0 ? (
+                    <ul className="mt-3 space-y-2 text-sm text-red-800">
+                      {liveBlockingErrors.map((error, index) => <li key={`${error}-${index}`}>• {error}</li>)}
+                    </ul>
+                  ) : (
+                    <p className="mt-3 text-sm text-red-700">Nenhum erro bloqueante.</p>
+                  )}
+                </div>
+
+                <div className="rounded-2xl border border-yellow-200 bg-yellow-50 p-4">
+                  <h4 className="font-semibold text-yellow-900">Avisos</h4>
+                  {builderValidation.warnings.length > 0 ? (
+                    <ul className="mt-3 space-y-2 text-sm text-yellow-800">
+                      {builderValidation.warnings.map((warning, index) => <li key={`${warning.field}-${index}`}>• {warning.message}</li>)}
+                    </ul>
+                  ) : (
+                    <p className="mt-3 text-sm text-yellow-700">Sem avisos no padrão atual.</p>
+                  )}
+                </div>
+
+                <div className={`rounded-2xl border p-4 ${statusTone}`}>
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-[0.18em]">Validador em tempo real</p>
+                      <h3 className="mt-2 text-lg font-bold">{builderValidation.isValid ? (builderValidation.warnings.length > 0 ? 'Quase pronto' : 'Tudo certo') : 'Faltam ajustes'}</h3>
+                      <p className="mt-2 text-sm">Canal estimado no GA4: <strong>{builderValidation.channelGrouping}</strong></p>
+                    </div>
+                    <Sparkles className="mt-1 h-5 w-5 flex-shrink-0" />
+                  </div>
+                  <div className="mt-4 space-y-2">
+                    {liveChecks.map((check) => (
+                      <div key={check.label} className="flex gap-2 rounded-xl bg-white/70 p-2 text-sm">
+                        {check.ok ? <CheckCircle className="mt-0.5 h-4 w-4 flex-shrink-0 text-green-600" /> : <XCircle className="mt-0.5 h-4 w-4 flex-shrink-0 text-red-600" />}
+                        <div>
+                          <p className="font-semibold text-gray-900">{check.label}</p>
+                          <p className="text-xs text-gray-600">{check.message}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="mt-4 rounded-2xl bg-white/70 p-3 text-sm text-gray-800">
+                    <p className="break-all leading-relaxed">{livePreview || 'A URL final aparecerá aqui enquanto você preenche os campos.'}</p>
+                  </div>
+                </div>
+              </aside>
+            </div>
+          )}
+
+          {activeTab === 'validator' && (
+            <div className="space-y-6">
+              <h3 className="text-lg font-medium text-gray-900">Validar parâmetros UTM</h3>
+              <div>
+                <label className="adrock-field-label mb-1 block text-sm font-medium">Cole a URL para validar</label>
+                <textarea value={urlToValidate} onChange={(e) => setUrlToValidate(e.target.value)} className="w-full px-3 py-2" rows={3} placeholder="https://cliente.com/oferta?utm_source=google&utm_medium=cpc&utm_campaign=black_friday_2026" />
+              </div>
+              {validatorResult && (
+                <div className="space-y-4">
+                  <div className={`rounded-2xl border p-4 ${validatorResult.isValid ? 'border-green-200 bg-green-50' : 'border-red-200 bg-red-50'}`}>
+                    <div className="mb-2 flex items-center space-x-2">
+                      {validatorResult.isValid ? <><CheckCircle className="h-5 w-5 text-green-600" /><h4 className="font-medium text-green-900">URL válida</h4></> : <><XCircle className="h-5 w-5 text-red-600" /><h4 className="font-medium text-red-900">URL inválida</h4></>}
+                    </div>
+                    <p className="text-sm text-gray-700">Agrupamento previsto no GA4: <strong>{validatorResult.channelGrouping}</strong></p>
+                    {validatorResult.matchedPresetLabel && <p className="mt-2 text-sm text-gray-700">Cenário reconhecido pela ferramenta: <strong>{validatorResult.matchedPresetLabel}</strong></p>}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {activeTab === 'rules' && (
+            <div className="space-y-6">
+              <div>
+                <h3 className="mb-4 text-lg font-medium text-gray-900">Regras de agrupamento de canais do GA4</h3>
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 transform text-gray-400" />
+                  <input type="text" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full py-2 pl-10 pr-4" placeholder="Buscar por canal, regra ou descrição..." />
+                </div>
+              </div>
+              <div className="space-y-4">
+                {filteredRules.map((rule, index) => (
+                  <div key={index} className="adrock-list-card rounded-2xl p-4">
+                    <div className="mb-2 flex items-start justify-between">
+                      <h4 className="font-semibold text-gray-900">{rule.channel}</h4>
+                      <span className="rounded-full bg-[#fff1db] px-2 py-1 text-xs text-[#ff940e]">GA4</span>
+                    </div>
+                    <p className="mb-2 text-sm text-gray-600">{rule.description}</p>
+                    <div className="rounded-2xl border border-[#c1d6e9] bg-white/80 p-3">
+                      <p className="text-xs font-mono text-gray-700">{rule.rule}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+function parseParametrizedUrl(urlToParse: string): UTMParams {
+  const url = new URL(urlToParse.trim());
+  const searchParams = new URLSearchParams(url.search);
+  const parsed: UTMParams = {
+    url: '',
+    source: searchParams.get('utm_source') || '',
+    medium: searchParams.get('utm_medium') || '',
+    campaign: searchParams.get('utm_campaign') || '',
+    term: searchParams.get('utm_term') || '',
+    content: searchParams.get('utm_content') || '',
+    id: searchParams.get('utm_id') || ''
+  };
+
+  ['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content', 'utm_id'].forEach((key) => {
+    searchParams.delete(key);
+  });
+
+  const query = searchParams.toString();
+  parsed.url = `${url.origin}${url.pathname}${query ? `?${query}` : ''}${url.hash}`;
+  return parsed;
+}
+
+function isWhatsAppUrl(value: string) {
+  if (!value.trim()) return false;
+
+  try {
+    const hostname = new URL(value.trim()).hostname.replace(/^www\./, '').toLowerCase();
+    return hostname === 'wa.me' || hostname.endsWith('whatsapp.com');
+  } catch {
+    return false;
+  }
+}
+
+function buildLivePreviewUrl(params: UTMParams) {
+  try {
+    return buildGeneratedUrl(params);
+  } catch {
+    return '';
+  }
+}
+
+export default UTMBuilder;

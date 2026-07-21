@@ -1,0 +1,11 @@
+[Unit]
+Description=Ad Rock UTM Builder PostgreSQL backup
+
+[Service]
+Type=oneshot
+EnvironmentFile=/var/www/utm_builder/server/.env
+Environment=BACKUP_DIR=/var/backups/utm_builder
+Environment=RETENTION_DAYS=14
+ExecStart=/var/www/utm_builder/scripts/backup-postgres.sh
+User=postgres
+Group=postgres
