@@ -22,6 +22,6 @@ Usuários, perfis, campanhas e grupos de ações devem poder ser governados por 
 
 Toda nova camada deve ser criada de forma destacável do hub principal, evitando acoplamento técnico e conceitual desnecessário.
 
-### 6. AWS-ready desde o início
+### 6. Linux-ready desde o início
 
-O projeto deve nascer com premissas de implantação simples em AWS, priorizando stack enxuta e previsível para cliente single-tenant.
+O projeto deve nascer com premissas de implantação simples em servidor Linux, priorizando stack enxuta e previsível para cliente single-tenant.
