@@ -16,7 +16,7 @@ Hoje a pasta já contém:
 - setup inicial de admin
 - backend funcional com rotas para usuários, campanhas e links
 - cadastros administrativos para selects, canais GA4 e logo do topo
-- estrutura de mídia em links de campanha: campanha, grupo de anúncio e tipo de anúncio
+- estrutura de mídia em links de campanha: cliente, campanha, grupo de anúncio e tipo de anúncio
 - specs do produto
 
 ## Estado alvo
@@ -26,7 +26,7 @@ Hoje a pasta já contém:
 - login
 - dashboard simples
 - UTM Builder
-- campanhas com estrutura de mídia
+- campanhas com nome do cliente e estrutura de mídia
 - histórico de links
 - administração de usuários
 - cadastros operacionais e marca do topo
@@ -37,7 +37,7 @@ Hoje a pasta já contém:
 - gestão de usuários
 - CRUD de campanhas
 - CRUD de links
-- filtros do catalogo de links para leitura por `utm_campaign`, `utm_content`, `utm_id`, canal, periodo e Bitly
+- filtros do catalogo de links para leitura por cliente, `utm_campaign`, `utm_content`, `utm_id`, canal, periodo e Bitly
 - CRUD de cadastros administrativos
 - area de documentos para armazenar URLs de planilhas modelo e materiais de apoio
 - auditoria mínima

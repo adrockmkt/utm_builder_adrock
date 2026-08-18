@@ -11,6 +11,7 @@ router.get('/utm-links.csv', async (_req, res) => {
   const result = await pool.query(
     `select l.created_at,
             l.internal_name,
+            c.client_name as campaign_client_name,
             c.name as campaign_name,
             l.base_url,
             l.utm_source,
@@ -33,6 +34,7 @@ router.get('/utm-links.csv', async (_req, res) => {
   const csv = toCsv(result.rows, [
     { key: 'created_at', label: 'Criado em' },
     { key: 'internal_name', label: 'Nome interno' },
+    { key: 'campaign_client_name', label: 'Cliente' },
     { key: 'campaign_name', label: 'Campanha' },
     { key: 'base_url', label: 'URL base' },
     { key: 'utm_source', label: 'utm_source' },
@@ -57,6 +59,7 @@ router.get('/utm-links.csv', async (_req, res) => {
 router.get('/utm-campaigns.csv', async (_req, res) => {
   const result = await pool.query(
     `select c.created_at,
+            c.client_name,
             c.name,
             c.slug,
             c.type,
@@ -76,7 +79,8 @@ router.get('/utm-campaigns.csv', async (_req, res) => {
 
   const csv = toCsv(result.rows, [
     { key: 'created_at', label: 'Criado em' },
-    { key: 'name', label: 'Nome' },
+    { key: 'client_name', label: 'Cliente' },
+    { key: 'name', label: 'Nome da campanha' },
     { key: 'slug', label: 'Slug' },
     { key: 'type', label: 'Tipo' },
     { key: 'main_channel', label: 'Canal principal' },

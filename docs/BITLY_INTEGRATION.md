@@ -10,20 +10,22 @@ Fluxo desejado:
 
 1. Usuario gera o link parametrizado no UTM Builder.
 2. Usuario confere o link gerado.
-3. Usuario informa um nome curto desejado, por exemplo `curso-digital-evento`.
+3. Usuario informa um nome curto desejado, por exemplo `curso-digital-porvir`.
 4. Sistema chama a API do Bitly com o token da conta do cliente.
-5. Bitly cria o link curto no formato `bit.ly/curso-digital-evento`.
+5. Bitly cria o link curto no formato `bit.ly/curso-digital-porvir`.
 6. Sistema salva no banco o link com UTM original e o link Bitly.
+
+Se o link salvo for editado depois, o sistema permite atualizar tambem o destino do Bitly para a nova URL parametrizada, mantendo o mesmo `bit.ly/nome-do-link`.
 
 ## Escopo escolhido
 
-Por padrao, a decisao recomendada e usar o dominio padrao do Bitly:
+Para o Porvir, a decisao atual e usar apenas o dominio padrao do Bitly:
 
 ```text
 bit.ly/nome-do-link
 ```
 
-Nao usar dominio proprio por enquanto, porque isso exigiria compra/configuracao de dominio, DNS e validacao no Bitly.
+Nao usar dominio proprio por enquanto, como `porvir.link`, porque isso exigiria compra/configuracao de dominio, DNS e validacao no Bitly.
 
 ## Requisitos na conta Bitly do cliente
 
@@ -100,7 +102,7 @@ Payload esperado:
 
 ```json
 {
-  "customBackHalf": "curso-digital-evento"
+  "customBackHalf": "curso-digital-porvir"
 }
 ```
 
@@ -122,8 +124,27 @@ Este nome curto ja esta em uso no Bitly. Tente outro.
 O usuario entao pode tentar outro nome, por exemplo:
 
 ```text
-curso-digital-evento-2026
+curso-digital-porvir-2026
 ```
+
+### Editar destino de um Bitly existente
+
+Quando um link salvo no catalogo ja tem Bitly e o usuario edita a URL parametrizada, o sistema mostra uma opcao:
+
+```text
+Atualizar tambem o destino do Bitly para esta nova URL.
+```
+
+Com essa opcao marcada, o backend:
+
+- salva os novos parametros UTM no registro do link
+- chama a API do Bitly para atualizar o `long_url`
+- mantem o mesmo back-half ja divulgado, por exemplo `bit.ly/curso-digital-porvir`
+- registra falhas em `bitly_error` caso o Bitly recuse a atualizacao
+
+O objetivo e corrigir destino/UTMs sem perder um link curto que ja pode ter sido enviado para material offline, QR code, evento ou folder.
+
+Trocar o proprio back-half do Bitly nao faz parte do fluxo principal do sistema. Se isso for necessario, a recomendacao operacional e criar um novo Bitly ou ajustar manualmente na interface do Bitly, avaliando se o link antigo ja foi divulgado.
 
 ### Erros esperados
 
@@ -150,6 +171,8 @@ Tambem registrar evento em auditoria:
 ```text
 bitly_link_created
 bitly_link_failed
+link_updated
+bitly_destination_update_failed
 ```
 
 ## UX implementada
@@ -180,7 +203,7 @@ O usuario pode editar esse nome antes de gerar o Bitly. Se o nome ja existir na 
 Se der certo, exibir:
 
 ```text
-bit.ly/curso-digital-evento
+bit.ly/curso-digital-porvir
 ```
 
 ## Ponto importante sobre GA4
@@ -188,7 +211,7 @@ bit.ly/curso-digital-evento
 O Bitly deve apontar para a URL completa com UTMs. Assim:
 
 ```text
-bit.ly/curso-digital-evento
+bit.ly/curso-digital-porvir
 ```
 
 redireciona para:

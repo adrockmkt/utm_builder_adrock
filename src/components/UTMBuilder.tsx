@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { CheckCircle, ChevronDown, ChevronUp, Copy, Info, Link2, Save, Search, Sparkles, XCircle } from 'lucide-react';
-import { buildGeneratedUrl, CHANNEL_PRESETS, CHANNEL_RULES, type ChannelPreset, type UTMParams, UTM_FIELD_GUIDES, inferPresetFromValues, normalizeUtmValue, validateUrlString, validateUtmParams } from '../utils/utm';
+import { buildGeneratedUrl, CHANNEL_PRESETS, CHANNEL_RULES, type ChannelPreset, type UTMParams, UTM_FIELD_GUIDES, inferPresetFromValues, normalizeUtmDraftValue, normalizeUtmValue, validateUrlString, validateUtmParams } from '../utils/utm';
 import type { CampaignRecord, ChannelPresetRecord, SaveLinkPayload, SelectOptionRecord } from '../types';
 
 const emptyParams: UTMParams = {
@@ -13,12 +13,62 @@ const emptyParams: UTMParams = {
   id: ''
 };
 
+const ga4UtmDimensions = [
+  {
+    parameter: 'utm_source',
+    dimensionPt: 'Origem da sessão ou Origem manual da sessão',
+    dimensionEn: 'Session source / Session manual source'
+  },
+  {
+    parameter: 'utm_medium',
+    dimensionPt: 'Mídia da sessão ou Mídia manual da sessão',
+    dimensionEn: 'Session medium / Session manual medium'
+  },
+  {
+    parameter: 'utm_campaign',
+    dimensionPt: 'Campanha manual da sessão',
+    dimensionEn: 'Session manual campaign'
+  },
+  {
+    parameter: 'utm_id',
+    dimensionPt: 'ID manual da campanha da sessão',
+    dimensionEn: 'Session manual campaign ID'
+  },
+  {
+    parameter: 'utm_content',
+    dimensionPt: 'Conteúdo manual do anúncio da sessão',
+    dimensionEn: 'Session manual ad content'
+  },
+  {
+    parameter: 'utm_term',
+    dimensionPt: 'Termo manual da sessão',
+    dimensionEn: 'Session manual term'
+  },
+  {
+    parameter: 'utm_source_platform',
+    dimensionPt: 'Plataforma de origem manual da sessão',
+    dimensionEn: 'Session manual source platform'
+  },
+  {
+    parameter: 'utm_creative_format',
+    dimensionPt: 'Formato criativo manual da sessão',
+    dimensionEn: 'Session manual creative format'
+  },
+  {
+    parameter: 'utm_marketing_tactic',
+    dimensionPt: 'Tática de marketing manual da sessão',
+    dimensionEn: 'Session manual marketing tactic'
+  }
+];
+
 interface UTMBuilderProps {
   campaigns?: CampaignRecord[];
   channelPresets?: ChannelPresetRecord[];
   actionTypeOptions?: SelectOptionRecord[];
   destinationTypeOptions?: SelectOptionRecord[];
   adTypeOptions?: SelectOptionRecord[];
+  utmContentOptions?: SelectOptionRecord[];
+  utmTermOptions?: SelectOptionRecord[];
   utmIdOptions?: SelectOptionRecord[];
   onCreateCampaignRequest?: () => void;
   onSaveLink?: (payload: SaveLinkPayload) => Promise<void>;
@@ -72,6 +122,183 @@ const fallbackUtmIdOptions = [
   'curso_comp_digitais_lp_em',
   'lp_ebook_enem'
 ];
+const fallbackUtmTermOptions = [
+  'ec_canal',
+  'ec_relacionamento',
+  'ec_grupo_ea',
+  'ec_facebook',
+  'ec_grupo_es',
+  'ec_grupo_crm',
+  'newsletter_premio',
+  'ec_aquisicao',
+  'email_58_trap_texto_d1',
+  'email_58_trap_texto_d2',
+  'coluna_debora_garofalo',
+  'abertura_inscricoes',
+  'agosto_datas',
+  'alfabetizacao_algoritmica',
+  'atualidades_curriculo',
+  'banner_premio_site',
+  'bncc_computacao1',
+  'dicas_escola',
+  'entrevista_gustavo_estanislau',
+  'formulario_premio',
+  'site_efemerides_agosto',
+  'site_porvir',
+  'stories_premio'
+];
+
+type SuggestionGroup = {
+  id: string;
+  label: string;
+  options: Array<{ value: string; label: string }>;
+};
+
+const generalContentGroup: SuggestionGroup = {
+  id: 'padroes_gerais',
+  label: 'Padrões gerais',
+  options: [
+    ['text_ad', 'Anúncio de texto'],
+    ['image_ad', 'Image ad'],
+    ['story_ad', 'Story ad'],
+    ['lead_ad', 'Lead ad'],
+    ['video_ad', 'Video ad'],
+    ['display_ad', 'Display ad'],
+    ['shopping_ad', 'Shopping ad'],
+    ['infografico', 'Infográfico'],
+    ['materia', 'Matéria'],
+    ['ebook', 'E-book'],
+    ['webstory', 'WebStory'],
+    ['podcast', 'Podcast'],
+    ['jogo', 'Jogo'],
+    ['webinario', 'Webinário'],
+    ['landing_page', 'Landing page'],
+    ['whatsapp_canal', 'Whatsapp canal'],
+    ['whatsapp_comunidade_socioemocional', 'Whatsapp comunidade socioemocional'],
+    ['whatsapp_comunidade_antirracista', 'Whatsapp comunidade antirracista'],
+    ['whatsapp_comunidade_tecnologia', 'Whatsapp comunidade tecnologia'],
+    ['whatsapp_comunidade_metodologias_ativas', 'Whatsapp comunidade metodologias ativas'],
+    ['newsletter_semanal', 'Newsletter semanal'],
+    ['newsletter_gestao', 'Newsletter gestão'],
+    ['newsletter_comercial', 'Newsletter comercial'],
+    ['instagram', 'Instagram'],
+    ['facebook', 'Facebook'],
+    ['linkedin', 'LinkedIn'],
+    ['video', 'Vídeo']
+  ].map(([value, label]) => ({ value, label }))
+};
+
+const porvirContentGroups: SuggestionGroup[] = [
+  {
+    id: 'wordpress',
+    label: 'WordPress',
+    options: [
+      ['blog', 'Blog'],
+      ['materia', 'Matéria'],
+      ['reportagem', 'Reportagem'],
+      ['artigo', 'Artigo'],
+      ['agenda', 'Agenda'],
+      ['gestao', 'Gestão'],
+      ['biblioteca', 'Biblioteca'],
+      ['glossario', 'Glossário'],
+      ['festival', 'Festival'],
+      ['premio', 'Prêmio'],
+      ['video', 'Vídeo']
+    ].map(([value, label]) => ({ value, label }))
+  },
+  {
+    id: 'instagram',
+    label: 'Instagram',
+    options: [
+      ['link_bio', 'Link da bio'],
+      ['stories', 'Stories'],
+      ['reels', 'Reels'],
+      ['manychat', 'Manychat'],
+      ['timeline', 'Timeline'],
+      ['botao', 'Botão']
+    ].map(([value, label]) => ({ value, label }))
+  },
+  {
+    id: 'facebook',
+    label: 'Facebook',
+    options: [['feed', 'Feed']].map(([value, label]) => ({ value, label }))
+  },
+  {
+    id: 'newsletter_semanal',
+    label: 'Newsletter semanal',
+    options: [
+      ['texto_abertura', 'Texto abertura'],
+      ['destaque1', 'Destaque 1'],
+      ['destaque2', 'Destaque 2'],
+      ['miniatura1', 'Miniatura 1'],
+      ['miniatura2', 'Miniatura 2'],
+      ['miniatura3', 'Miniatura 3'],
+      ['aspas', 'Aspas'],
+      ['dica_leitura1', 'Dica leitura 1'],
+      ['dica_leitura2', 'Dica leitura 2'],
+      ['story1', 'Story 1'],
+      ['story2', 'Story 2'],
+      ['story3', 'Story 3'],
+      ['agenda', 'Agenda'],
+      ['banner1', 'Banner 1'],
+      ['banner2', 'Banner 2'],
+      ['banner3', 'Banner 3']
+    ].map(([value, label]) => ({ value, label }))
+  },
+  {
+    id: 'newsletter_gestao',
+    label: 'Newsletter gestão',
+    options: [
+      ['texto_abertura', 'Texto abertura'],
+      ['destaque1', 'Destaque 1'],
+      ['miniatura1', 'Miniatura 1'],
+      ['miniatura2', 'Miniatura 2'],
+      ['banner_parceiro', 'Banner parceiro'],
+      ['banner2', 'Banner 2'],
+      ['agenda', 'Agenda']
+    ].map(([value, label]) => ({ value, label }))
+  },
+  {
+    id: 'newsletter_premio',
+    label: 'Newsletter prêmio',
+    options: [
+      ['texto_abertura', 'Texto abertura'],
+      ['banner_abertura', 'Banner abertura'],
+      ['botao1', 'Botão 1'],
+      ['botao2', 'Botão 2']
+    ].map(([value, label]) => ({ value, label }))
+  },
+  {
+    id: 'whatsapp',
+    label: 'WhatsApp',
+    options: [
+      ['canal', 'Canal'],
+      ['comunidade_socioemocional', 'Comunidade socioemocional'],
+      ['comunidade_antirracista', 'Comunidade antirracista'],
+      ['comunidade_tecnologia', 'Comunidade tecnologia'],
+      ['comunidade_metodologias_ativas', 'Comunidade metodologias ativas']
+    ].map(([value, label]) => ({ value, label }))
+  }
+];
+
+const porvirUtmIdGroups: SuggestionGroup[] = [
+  {
+    id: 'elementos',
+    label: 'Elementos do link',
+    options: [
+      ['texto_01', 'Texto 01'],
+      ['texto_02', 'Texto 02'],
+      ['img_01', 'Imagem 01'],
+      ['img_02', 'Imagem 02'],
+      ['botao_01', 'Botão 01'],
+      ['botao_02', 'Botão 02'],
+      ['banner_01', 'Banner 01'],
+      ['banner_02', 'Banner 02'],
+      ['catalogo', 'Catálogo'],
+      ['canal', 'Canal']
+    ].map(([value, label]) => ({ value, label }))
+  }
+];
 
 const UTMBuilder: React.FC<UTMBuilderProps> = ({
   campaigns = [],
@@ -79,6 +306,8 @@ const UTMBuilder: React.FC<UTMBuilderProps> = ({
   actionTypeOptions = [],
   destinationTypeOptions = [],
   adTypeOptions = [],
+  utmContentOptions = [],
+  utmTermOptions = [],
   utmIdOptions = [],
   onCreateCampaignRequest,
   onSaveLink,
@@ -95,9 +324,22 @@ const UTMBuilder: React.FC<UTMBuilderProps> = ({
   const resolvedAdTypeOptions = adTypeOptions.filter((option) => option.isActive).length > 0
     ? adTypeOptions.filter((option) => option.isActive)
     : fallbackAdTypeOptions.map((value) => ({ id: value, category: 'ad_type' as const, value, label: value, sortOrder: 0, isActive: true }));
+  const customContentGroup = buildCustomSuggestionGroup('cadastrados_content', 'Cadastrados', utmContentOptions);
+  const contentSuggestionGroups = customContentGroup
+    ? [generalContentGroup, ...porvirContentGroups, customContentGroup]
+    : [generalContentGroup, ...porvirContentGroups];
+  const resolvedUtmTermOptions = utmTermOptions.filter((option) => option.isActive).length > 0
+    ? utmTermOptions.filter((option) => option.isActive)
+    : fallbackUtmTermOptions.map((value) => ({ id: value, category: 'utm_term' as const, value, label: value, sortOrder: 0, isActive: true }));
+  const customUtmTermGroup = buildCustomSuggestionGroup('cadastrados_term', 'Valores comuns', resolvedUtmTermOptions);
+  const utmTermSuggestionGroups = customUtmTermGroup ? [customUtmTermGroup] : [];
   const resolvedUtmIdOptions = utmIdOptions.filter((option) => option.isActive).length > 0
     ? utmIdOptions.filter((option) => option.isActive)
     : fallbackUtmIdOptions.map((value) => ({ id: value, category: 'utm_id' as const, value, label: value, sortOrder: 0, isActive: true }));
+  const customUtmIdGroup = buildCustomSuggestionGroup('cadastrados_id', 'Cadastrados', resolvedUtmIdOptions);
+  const utmIdSuggestionGroups = customUtmIdGroup
+    ? [...porvirUtmIdGroups, customUtmIdGroup]
+    : porvirUtmIdGroups;
   const [showInstructions, setShowInstructions] = useState(false);
   const [activeTab, setActiveTab] = useState<'builder' | 'validator' | 'rules'>('builder');
   const [selectedPresetId, setSelectedPresetId] = useState<string>(resolvedChannelPresets[0].id);
@@ -239,8 +481,8 @@ const UTMBuilder: React.FC<UTMBuilderProps> = ({
       alert('Selecione a campanha relacionada.');
       return;
     }
-    if (contextType !== 'pontual' && !adGroupName.trim()) {
-      alert('Informe o grupo de anúncio para este link de campanha.');
+    if (contextType !== 'pontual' && !utmParams.term.trim()) {
+      alert('Informe ou selecione o utm_term para este link de campanha.');
       return;
     }
 
@@ -295,9 +537,9 @@ const UTMBuilder: React.FC<UTMBuilderProps> = ({
         message: selectedCampaignId ? 'Link vinculado a uma campanha.' : 'Selecione uma campanha já criada.'
       },
       {
-        label: 'Grupo de anúncio',
-        ok: Boolean(adGroupName.trim()),
-        message: adGroupName.trim() ? 'Vai preencher o utm_term.' : 'Informe o grupo de anúncio quando existir.'
+        label: 'utm_term',
+        ok: Boolean(utmParams.term.trim()),
+        message: utmParams.term.trim() ? 'Termo preenchido.' : 'Selecione ou escreva o utm_term.'
       },
       {
         label: 'utm_content',
@@ -309,7 +551,7 @@ const UTMBuilder: React.FC<UTMBuilderProps> = ({
   const campaignContextErrors = contextType === 'campanha'
     ? [
       ...(!selectedCampaignId ? ['Selecione uma campanha cadastrada.'] : []),
-      ...(!adGroupName.trim() ? ['Informe o grupo de anúncio para preencher o utm_term.'] : [])
+      ...(!utmParams.term.trim() ? ['Informe ou selecione o utm_term.'] : [])
     ]
     : [];
   const liveBlockingErrors = [
@@ -333,7 +575,11 @@ const UTMBuilder: React.FC<UTMBuilderProps> = ({
 
   const handleAdGroupChange = (value: string) => {
     setAdGroupName(value);
-    handleParamChange('term', normalizeUtmValue(value));
+    handleParamChange('term', normalizeUtmDraftValue(value));
+  };
+
+  const handleTermValueChange = (value: string) => {
+    handleParamChange('term', normalizeUtmDraftValue(value));
   };
 
   const syncContentNotes = (value: string) => {
@@ -352,14 +598,13 @@ const UTMBuilder: React.FC<UTMBuilderProps> = ({
   };
 
   const handleContentValueChange = (value: string) => {
-    const normalizedValue = normalizeUtmValue(value);
-    setAdType(value);
+    const normalizedValue = normalizeUtmDraftValue(value);
     handleParamChange('content', normalizedValue);
     syncContentNotes(value);
   };
 
   const handleUtmIdValueChange = (value: string) => {
-    handleParamChange('id', normalizeUtmValue(value));
+    handleParamChange('id', normalizeUtmDraftValue(value));
   };
 
   return (
@@ -385,6 +630,30 @@ const UTMBuilder: React.FC<UTMBuilderProps> = ({
             <div>
               <h4 className="font-semibold">Governança do produto</h4>
               <p>Nesta versão standalone, o link já pode nascer como item pontual ou vinculado a campanha e grupo de ações para não perder contexto depois.</p>
+            </div>
+            <div className="rounded-2xl border border-[#c1d6e9] bg-white/80 p-3">
+              <h4 className="font-semibold">Dimensões UTM no GA4</h4>
+              <p className="mt-1 text-xs text-gray-600">No GA4, os parâmetros UTM aparecem nas dimensões abaixo.</p>
+              <div className="mt-3 overflow-x-auto">
+                <table className="min-w-[760px] w-full text-left text-xs">
+                  <thead>
+                    <tr className="border-b border-[#c1d6e9] text-gray-700">
+                      <th className="px-3 py-2 font-semibold">Parâmetro UTM</th>
+                      <th className="px-3 py-2 font-semibold">Nome da dimensão em português (GA4)</th>
+                      <th className="px-3 py-2 font-semibold">Nome da dimensão em inglês</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {ga4UtmDimensions.map((item) => (
+                      <tr key={item.parameter} className="border-b border-[#e5eef7] last:border-b-0">
+                        <td className="px-3 py-2 font-mono font-semibold text-gray-900">{item.parameter}</td>
+                        <td className="px-3 py-2 font-medium text-gray-800">{item.dimensionPt}</td>
+                        <td className="px-3 py-2 font-medium text-gray-800">{item.dimensionEn}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
         )}
@@ -475,7 +744,9 @@ const UTMBuilder: React.FC<UTMBuilderProps> = ({
                         <select value={selectedCampaignId} onChange={(e) => handleCampaignChange(e.target.value)} className="w-full px-3 py-2">
                           <option value="">Selecione uma campanha cadastrada</option>
                           {relatedCampaignOptions.map((campaign) => (
-                            <option key={campaign.id} value={campaign.id}>{campaign.name}</option>
+                            <option key={campaign.id} value={campaign.id}>
+                              {campaign.client_name ? `${campaign.client_name} - ${campaign.name}` : campaign.name}
+                            </option>
                           ))}
                         </select>
                         {relatedCampaignOptions.length === 0 && (
@@ -483,6 +754,7 @@ const UTMBuilder: React.FC<UTMBuilderProps> = ({
                         )}
                         {selectedCampaign && (
                           <p className="mt-2 text-xs text-gray-600">
+                            {selectedCampaign.client_name && <>Cliente: <strong>{selectedCampaign.client_name}</strong>. </>}
                             Este link usará <strong>{selectedCampaign.slug}</strong> no utm_campaign.
                           </p>
                         )}
@@ -574,33 +846,26 @@ const UTMBuilder: React.FC<UTMBuilderProps> = ({
                   <div key={guide.key}>
                     <label className="adrock-field-label mb-1 block text-sm font-medium">{guide.label}{guide.required ? ' *' : ''}</label>
                     {guide.key === 'content' ? (
-                      <div className="space-y-2">
-                        <select value={resolvedAdTypeOptions.some((option) => option.value === adType) ? adType : ''} onChange={(e) => handleContentValueChange(e.target.value)} className="w-full px-3 py-2">
-                          <option value="">Selecionar sugestão</option>
-                          {resolvedAdTypeOptions.map((option) => <option key={option.id} value={option.value}>{option.label}</option>)}
-                        </select>
-                        <input
-                          type="text"
-                          value={utmParams.content}
-                          onChange={(e) => handleContentValueChange(e.target.value)}
-                          className="w-full px-3 py-2"
-                          placeholder="Ou escreva um utm_content próprio"
-                        />
-                      </div>
+                      <SuggestionBox
+                        groups={contentSuggestionGroups}
+                        value={utmParams.content}
+                        onChange={handleContentValueChange}
+                        placeholder="Ou escreva um utm_content próprio"
+                      />
+                    ) : guide.key === 'term' ? (
+                      <SuggestionBox
+                        groups={utmTermSuggestionGroups}
+                        value={utmParams.term}
+                        onChange={handleTermValueChange}
+                        placeholder="Ou escreva um utm_term próprio"
+                      />
                     ) : guide.key === 'id' ? (
-                      <div className="space-y-2">
-                        <select value={resolvedUtmIdOptions.some((option) => option.value === utmParams.id) ? utmParams.id : ''} onChange={(e) => handleUtmIdValueChange(e.target.value)} className="w-full px-3 py-2">
-                          <option value="">Selecionar sugestão</option>
-                          {resolvedUtmIdOptions.map((option) => <option key={option.id} value={option.value}>{option.label}</option>)}
-                        </select>
-                        <input
-                          type="text"
-                          value={utmParams.id}
-                          onChange={(e) => handleUtmIdValueChange(e.target.value)}
-                          className="w-full px-3 py-2"
-                          placeholder="Ou escreva um utm_id próprio"
-                        />
-                      </div>
+                      <SuggestionBox
+                        groups={utmIdSuggestionGroups}
+                        value={utmParams.id}
+                        onChange={handleUtmIdValueChange}
+                        placeholder="Ou escreva um utm_id próprio"
+                      />
                     ) : (
                       <input type="text" value={utmParams[guide.key]} onChange={(e) => handleParamChange(guide.key, e.target.value)} className="w-full px-3 py-2" placeholder={guide.example} />
                     )}
@@ -621,6 +886,12 @@ const UTMBuilder: React.FC<UTMBuilderProps> = ({
                   <label className="adrock-field-label mb-1 block text-sm font-medium">Tipo de ação</label>
                   <select value={actionType} onChange={(e) => setActionType(e.target.value)} className="w-full px-3 py-2">
                     {resolvedActionTypeOptions.map((option) => <option key={option.id} value={option.value}>{option.label}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="adrock-field-label mb-1 block text-sm font-medium">Tipo de anúncio/formato</label>
+                  <select value={adType} onChange={(e) => setAdType(e.target.value)} className="w-full px-3 py-2">
+                    {resolvedAdTypeOptions.map((option) => <option key={option.id} value={option.value}>{option.label}</option>)}
                   </select>
                 </div>
                 <div>
@@ -767,6 +1038,109 @@ const UTMBuilder: React.FC<UTMBuilderProps> = ({
     </div>
   );
 };
+
+function SuggestionBox({
+  groups,
+  value,
+  onChange,
+  placeholder
+}: {
+  groups: SuggestionGroup[];
+  value: string;
+  onChange: (value: string) => void;
+  placeholder: string;
+}) {
+  const allGroupsId = '__all__';
+  const [activeGroupId, setActiveGroupId] = useState(allGroupsId);
+  const [suggestionSearch, setSuggestionSearch] = useState('');
+  const allOptions = useMemo(() => {
+    const seen = new Set<string>();
+    return groups.flatMap((group) => group.options).filter((option) => {
+      if (seen.has(option.value)) return false;
+      seen.add(option.value);
+      return true;
+    });
+  }, [groups]);
+  const activeOptions = activeGroupId === allGroupsId
+    ? allOptions
+    : groups.find((group) => group.id === activeGroupId)?.options || [];
+  const filteredOptions = activeOptions.filter((option) => {
+    const query = suggestionSearch.trim().toLowerCase();
+    if (!query) return true;
+    return option.label.toLowerCase().includes(query) || option.value.toLowerCase().includes(query);
+  });
+
+  useEffect(() => {
+    if (activeGroupId !== allGroupsId && !groups.some((group) => group.id === activeGroupId)) {
+      setActiveGroupId(allGroupsId);
+    }
+  }, [activeGroupId, groups]);
+
+  return (
+    <div className="rounded-2xl border border-[#c1d6e9] bg-[#f8fbff] p-3">
+      <div className="mb-3">
+        <label className="mb-1 block text-xs font-semibold text-gray-600">Contexto das sugestões</label>
+        <select
+          value={activeGroupId}
+          onChange={(event) => setActiveGroupId(event.target.value)}
+          className="w-full rounded-xl border border-[#c1d6e9] bg-white px-3 py-2 text-sm outline-none focus:border-[#ff940e]"
+        >
+          <option value={allGroupsId}>Todos</option>
+          {groups.map((group) => (
+            <option key={group.id} value={group.id}>{group.label}</option>
+          ))}
+        </select>
+        <input
+          type="search"
+          value={suggestionSearch}
+          onChange={(event) => setSuggestionSearch(event.target.value)}
+          className="mt-2 w-full rounded-xl border border-[#c1d6e9] bg-white px-3 py-2 text-sm outline-none focus:border-[#ff940e]"
+          placeholder="Buscar sugestão..."
+        />
+      </div>
+      <div className="max-h-48 space-y-2 overflow-y-auto rounded-xl border border-[#d9e7f4] bg-white p-2">
+        {filteredOptions.length === 0 && (
+          <p className="px-3 py-2 text-sm text-gray-500">Nenhuma sugestão encontrada.</p>
+        )}
+        {filteredOptions.map((option) => {
+          const selected = value === option.value;
+          return (
+            <button
+              key={`${activeGroupId}-${option.value}`}
+              type="button"
+              onClick={() => onChange(option.value)}
+              className={`flex w-full items-center justify-between gap-3 rounded-xl px-3 py-2 text-left text-sm ${
+                selected
+                  ? 'bg-[#fff1db] font-semibold text-[#9a4a00]'
+                  : 'text-gray-700 hover:bg-[#f4f8fc]'
+              }`}
+            >
+              <span>{option.label}</span>
+              <span className="shrink-0 font-mono text-xs text-gray-500">{option.value}</span>
+            </button>
+          );
+        })}
+      </div>
+      <input
+        type="text"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="mt-2 w-full px-3 py-2"
+        placeholder={placeholder}
+      />
+    </div>
+  );
+}
+
+function buildCustomSuggestionGroup(id: string, label: string, options: SelectOptionRecord[]): SuggestionGroup | null {
+  const activeOptions = options
+    .filter((option) => option.isActive)
+    .map((option) => ({ value: option.value, label: option.label }));
+
+  if (activeOptions.length === 0) return null;
+
+  return { id, label, options: activeOptions };
+}
 
 function parseParametrizedUrl(urlToParse: string): UTMParams {
   const url = new URL(urlToParse.trim());

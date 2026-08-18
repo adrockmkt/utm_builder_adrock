@@ -6,6 +6,16 @@ export interface AuthUser {
   isAdmin: boolean;
 }
 
+export interface HealthRecord {
+  status: string;
+  database: string;
+  backup?: {
+    status: 'ok' | 'pending' | 'unavailable';
+    lastBackupAt: string | null;
+    file: string | null;
+  };
+}
+
 export interface UserRecord {
   id: string;
   name: string;
@@ -20,7 +30,8 @@ export interface CampaignRecord {
   name: string;
   slug: string;
   tenant_label: string;
-  type: 'pontual' | 'campanha';
+  client_name: string | null;
+  type: 'pontual' | 'campanha' | 'grupo_de_acoes';
   main_channel: string;
   default_source: string | null;
   default_medium: string | null;
@@ -37,6 +48,7 @@ export interface LinkRecord {
   id: string;
   campaign_id: string | null;
   campaign_name?: string | null;
+  campaign_client_name?: string | null;
   base_url: string;
   utm_source: string;
   utm_medium: string;
@@ -101,6 +113,10 @@ export interface SaveLinkPayload {
   notes?: string;
 }
 
+export interface UpdateLinkPayload extends SaveLinkPayload {
+  syncBitlyDestination?: boolean;
+}
+
 export interface AuditLogRecord {
   id: string;
   action: string;
@@ -114,7 +130,7 @@ export interface AuditLogRecord {
   actor_email: string | null;
 }
 
-export type SelectOptionCategory = 'action_type' | 'destination_type' | 'campaign_type' | 'campaign_status' | 'ad_type' | 'utm_id';
+export type SelectOptionCategory = 'action_type' | 'destination_type' | 'campaign_type' | 'campaign_status' | 'client_name' | 'ad_type' | 'utm_content' | 'utm_term' | 'utm_id';
 
 export interface SelectOptionRecord {
   id: string;
@@ -144,5 +160,7 @@ export interface SettingsRecord {
     appName: string;
     topLogoUrl: string;
     topLogoSize: number;
+    funGifUrl: string;
+    funGifSize: number;
   };
 }

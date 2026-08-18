@@ -385,6 +385,15 @@ export function normalizeUtmValue(value: string) {
     .replace(/^_+|_+$/g, '');
 }
 
+export function normalizeUtmDraftValue(value: string) {
+  return value
+    .toLowerCase()
+    .replace(/\s+/g, '_')
+    .replace(/[^a-z0-9_-]/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_+/, '');
+}
+
 export function normalizeParams(params: UTMParams): UTMParams {
   return {
     url: params.url.trim(),

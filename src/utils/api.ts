@@ -1,4 +1,4 @@
-import type { AuditLogRecord, AuthUser, CampaignRecord, CreateBitlyResponse, DocumentLinkRecord, LinkRecord, SaveLinkPayload, SelectOptionCategory, SelectOptionRecord, SettingsRecord, UserRecord } from '../types';
+import type { AuditLogRecord, AuthUser, CampaignRecord, CreateBitlyResponse, DocumentLinkRecord, HealthRecord, LinkRecord, SaveLinkPayload, SelectOptionCategory, SelectOptionRecord, SettingsRecord, UpdateLinkPayload, UserRecord } from '../types';
 
 const TOKEN_KEY = 'adrock_utm_builder_token';
 const API_BASE_PATH = normalizeApiBasePath(import.meta.env.VITE_API_BASE_PATH || '/api');
@@ -79,14 +79,14 @@ export const api = {
     apiFetch<{ success: boolean }>('/auth/logout', {
       method: 'POST'
     }),
-  health: () => apiFetch<{ status: string; database: string }>('/health'),
+  health: () => apiFetch<HealthRecord>('/health'),
   listUsers: () => apiFetch<UserRecord[]>('/users'),
   createUser: (payload: { name: string; email: string; password: string; role: UserRecord['role'] }) =>
     apiFetch<{ id: string }>('/users', {
       method: 'POST',
       body: JSON.stringify(payload)
     }),
-  updateUser: (id: string, payload: Partial<Pick<UserRecord, 'name' | 'role' | 'status'>>) =>
+  updateUser: (id: string, payload: Partial<Pick<UserRecord, 'name' | 'email' | 'role' | 'status'>>) =>
     apiFetch<{ success: boolean }>(`/users/${id}`, {
       method: 'PATCH',
       body: JSON.stringify(payload)
@@ -98,6 +98,7 @@ export const api = {
     }),
   listCampaigns: () => apiFetch<CampaignRecord[]>('/utm-campaigns'),
   createCampaign: (payload: {
+    clientName?: string;
     name: string;
     type: CampaignRecord['type'];
     mainChannel: string;
@@ -112,6 +113,22 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(payload)
     }),
+  updateCampaign: (id: string, payload: {
+    clientName?: string;
+    name?: string;
+    type?: CampaignRecord['type'];
+    mainChannel?: string;
+    defaultSource?: string;
+    defaultMedium?: string;
+    startsAt?: string;
+    endsAt?: string;
+    status?: CampaignRecord['status'];
+    description?: string;
+  }) =>
+    apiFetch<{ success: boolean }>(`/utm-campaigns/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload)
+    }),
   deleteCampaign: (id: string) =>
     apiFetch<{ success: boolean }>(`/utm-campaigns/${id}`, {
       method: 'DELETE'
@@ -120,6 +137,11 @@ export const api = {
   createLink: (payload: SaveLinkPayload) =>
     apiFetch<{ id: string }>('/utm-links', {
       method: 'POST',
+      body: JSON.stringify(payload)
+    }),
+  updateLink: (id: string, payload: UpdateLinkPayload) =>
+    apiFetch<{ success: boolean; bitlyUpdated?: boolean }>(`/utm-links/${id}`, {
+      method: 'PATCH',
       body: JSON.stringify(payload)
     }),
   createBitlyLink: (id: string, customBackHalf: string) =>
@@ -169,6 +191,11 @@ export const api = {
       method: 'PUT',
       body: JSON.stringify({ dataUrl })
     }),
+  updateBrandFunGif: (dataUrl: string) =>
+    apiFetch<{ success: boolean }>('/settings/brand-fun-gif', {
+      method: 'PUT',
+      body: JSON.stringify({ dataUrl })
+    }),
   updateBrand: (payload: { appName: string }) =>
     apiFetch<{ success: boolean }>('/settings/brand', {
       method: 'PUT',
@@ -176,6 +203,10 @@ export const api = {
     }),
   resetBrandLogo: () =>
     apiFetch<{ success: boolean }>('/settings/brand-logo', {
+      method: 'DELETE'
+    }),
+  resetBrandFunGif: () =>
+    apiFetch<{ success: boolean }>('/settings/brand-fun-gif', {
       method: 'DELETE'
     }),
   downloadLinksCsv: () => apiDownload('/exports/utm-links.csv'),

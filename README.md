@@ -4,14 +4,14 @@ Versão standalone do `UTM Builder`, preparada para ser destacada deste reposit�
 
 ## Objetivo
 
-Entregar uma instalação `single-tenant` por cliente, mantendo uma base reutilizável da Ad Rock para novas implantações do UTM Builder.
+Entregar uma instalação `single-tenant` por cliente, começando pelo caso do `Porvir.org`, com operação hospedada em infraestrutura AWS do cliente.
 
 ## O que esta pasta já contém
 
 - frontend standalone com o módulo atual de geração e validação de UTMs
 - backend próprio com autenticação, usuários, campanhas e links
 - área administrativa para cadastros, presets de canal e logo do topo
-- documentação de produto, arquitetura e deploy genérico
+- documentação de produto, arquitetura e AWS
 - governança orientada por `spec-kit`
 - plano de separação em 3 fases
 
@@ -19,7 +19,7 @@ Entregar uma instalação `single-tenant` por cliente, mantendo uma base reutili
 
 - `src/`: app frontend standalone
 - `server/`: scaffold do backend próprio
-- `docs/`: visão de produto, arquitetura, deploy genérico e roadmap
+- `docs/`: visão de produto, arquitetura, AWS e roadmap
 - `.specify/`: constituição do projeto
 - `specs/`: specs por fase
 
@@ -74,7 +74,15 @@ O UTM Builder standalone deve evoluir de gerador para produto governado com:
 
 - [Arquitetura](./docs/ARCHITECTURE.md)
 - [Roadmap](./docs/ROADMAP.md)
+- [AWS Deployment](./docs/AWS_DEPLOYMENT.md)
+- [Migração AWS Lightsail](./docs/LIGHTSAIL_MIGRATION.md)
+- [Plano de backup local diário](./docs/LOCAL_BACKUP_PLAN.md)
+- [Plano de testes de segurança](./docs/SECURITY_TEST_PLAN.md)
+- [Auditoria de segurança 2026-07-23](./docs/SECURITY_AUDIT_2026-07-23.md)
 - [Deploy no cliente](./docs/CLIENT_DEPLOYMENT.md)
+- [Deploy DigitalOcean em /utm-builder](./docs/DIGITALOCEAN_DEPLOYMENT.md)
 - [Filtros do catálogo de links](./docs/LINK_CATALOG_FILTERS.md)
+- [Taxonomia UTM Porvir](./docs/PORVIR_UTM_TAXONOMY.md)
 - [Integração Bitly](./docs/BITLY_INTEGRATION.md)
+- [Procedimentos de manutenção](./docs/MAINTENANCE_PROCEDURES.md)
 - [Constituição](./.specify/constitution.md)

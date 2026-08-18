@@ -1,16 +1,130 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Activity, BarChart3, Download, ExternalLink, FileClock, FileText, Link2, LogOut, Plus, Settings, ShieldCheck, Users } from 'lucide-react';
+import { Activity, BarChart3, DatabaseBackup, Download, ExternalLink, FileClock, FileText, Link2, LogOut, Pencil, Plus, Settings, ShieldCheck, Users, X } from 'lucide-react';
 import UTMBuilder from './components/UTMBuilder';
 import { api, setStoredToken } from './utils/api';
-import type { AuditLogRecord, AuthUser, CampaignRecord, DocumentLinkRecord, LinkRecord, SaveLinkPayload, SelectOptionCategory, SelectOptionRecord, SettingsRecord, UserRecord } from './types';
+import type { AuditLogRecord, AuthUser, CampaignRecord, DocumentLinkRecord, HealthRecord, LinkRecord, SaveLinkPayload, SelectOptionCategory, SelectOptionRecord, SettingsRecord, UpdateLinkPayload, UserRecord } from './types';
 
-type Section = 'builder' | 'campaigns' | 'links' | 'documents' | 'users' | 'settings' | 'audit';
+type Section = 'builder' | 'campaigns' | 'links' | 'documents' | 'updates' | 'users' | 'settings' | 'audit';
+type LinkEditForm = UpdateLinkPayload;
+type UserRole = UserRecord['role'];
+type CampaignEditForm = {
+  clientName: string;
+  name: string;
+  type: CampaignRecord['type'];
+  mainChannel: string;
+  defaultSource: string;
+  defaultMedium: string;
+  startsAt: string;
+  endsAt: string;
+  status: CampaignRecord['status'];
+  description: string;
+};
 const DEFAULT_TOP_LOGO_URL = `${import.meta.env.BASE_URL}adrock-logo.png`;
 const DEFAULT_BRAND: SettingsRecord['brand'] = {
   appName: 'Ad Rock UTM Builder',
   topLogoUrl: DEFAULT_TOP_LOGO_URL,
-  topLogoSize: 56
+  topLogoSize: 56,
+  funGifUrl: '',
+  funGifSize: 128
 };
+const userRoleOptions: Array<{ value: UserRole; label: string }> = [
+  { value: 'admin', label: 'Admin' },
+  { value: 'editor', label: 'Editor' },
+  { value: 'viewer', label: 'Viewer' }
+];
+const userRoleLabels: Record<UserRole, string> = {
+  admin: 'Admin',
+  editor: 'Editor',
+  viewer: 'Viewer'
+};
+const releaseNotes = [
+  {
+    version: '2026-08-17',
+    title: 'Perfis de usuários',
+    items: [
+      'Admins agora podem alterar o perfil de acesso dos usuários entre Admin, Editor e Viewer pela tela de Usuários.'
+    ]
+  },
+  {
+    version: '2026-07-31',
+    title: 'Sugestões de utm_term',
+    items: [
+      'utm_term ganhou box de sugestões com rolagem e campo manual, seguindo o padrão de utm_content e utm_id.',
+      'Cadastros agora permitem criar e editar valores de utm_term.',
+      'Listas de Usuários e Auditoria ganharam rolagem própria para evitar páginas longas demais.',
+      'Links vinculados a campanha agora aceitam utm_term selecionado sem exigir grupo de anúncio separado.',
+      'Campos manuais de UTMs preservam underline durante a digitação, como em banner_home.',
+      'Boxes de sugestões agora abrem em Todos e ganharam busca interna para localizar valores rapidamente.'
+    ]
+  },
+  {
+    version: '2026-07-24',
+    title: 'Campanhas por cliente',
+    items: [
+      'Campanhas ganharam campo de cliente antes do nome da campanha.',
+      'Cadastros passaram a permitir criar nomes de clientes para uso nas campanhas.',
+      'Campanhas cadastradas agora podem ser editadas, incluindo datas, status e descrição.',
+      'Lista de campanhas cadastradas passou a ter rolagem própria após 5 campanhas visíveis.',
+      'Catálogo de links passou a exibir e filtrar cliente quando o link está vinculado a campanha.',
+      'Tutorial do UTM Builder passou a exibir a tabela de parâmetros UTM e dimensões equivalentes no GA4.'
+    ]
+  },
+  {
+    version: '2026-07-23',
+    title: 'Backups e monitoramento',
+    items: [
+      'Topo passou a exibir o status do banco e a data/hora do ultimo backup local em cards separados.'
+    ]
+  },
+  {
+    version: '2026-07-23',
+    title: 'Gestão de usuários',
+    items: [
+      'Admins agora podem alterar a senha dos usuários cadastrados pela tela de Usuários.',
+      'Tela de login passou a avisar quando usuário ou senha não permitem acesso.',
+      'Admins agora podem corrigir o email de login dos usuários cadastrados.'
+    ]
+  },
+  {
+    version: '2026-07-23',
+    title: 'Personalização do topo',
+    items: [
+      'Topo do sistema ganhou suporte a GIF animado pequeno e opcional.',
+      'Troca de logo, nome do sistema e GIF ficou restrita ao superusuário rafael@adrock.com.br.',
+      'Upload de GIF passou a exibir erro claro e o Nginx foi preparado para arquivos de até 4 MB.',
+      'GIF animado do topo agora aparece abaixo do botão de novidades.'
+    ]
+  },
+  {
+    version: '2026-07-22',
+    title: 'Taxonomia guiada de UTMs',
+    items: [
+      'Boxes com rolagem para sugestões de utm_content e utm_id.',
+      'Padrões gerais preservados para múltiplos clientes.',
+      'Grupos específicos do Porvir adicionados como camada de apoio.',
+      'Observações dos links passaram a aparecer no catálogo.',
+      'Cadastros agora aparecem separados por categoria, com rolagem própria em cada bloco.',
+      'Rótulo padronizado para Tipo de anúncio/formato.'
+    ]
+  },
+  {
+    version: '2026-07-21',
+    title: 'Edição de links e Bitly',
+    items: [
+      'Links salvos podem ser editados no catálogo.',
+      'Destino do Bitly pode ser atualizado quando a URL parametrizada muda.',
+      'Documentação da integração Bitly atualizada.'
+    ]
+  },
+  {
+    version: '2026-07-17',
+    title: 'Catálogo com filtros e rolagem',
+    items: [
+      'Catálogo de links ganhou filtros por campanha, conteúdo, utm_id, canal, período e Bitly.',
+      'Lista de resultados passou a ter rolagem própria para volumes maiores.'
+    ]
+  }
+];
 
 function App() {
   const [loading, setLoading] = useState(true);
@@ -28,12 +142,18 @@ function App() {
     brand: DEFAULT_BRAND
   });
   const [brandForm, setBrandForm] = useState({ appName: DEFAULT_BRAND.appName });
-  const [health, setHealth] = useState<{ status: string; database: string } | null>(null);
+  const [health, setHealth] = useState<HealthRecord | null>(null);
   const [savingLink, setSavingLink] = useState(false);
   const [creatingBitlyId, setCreatingBitlyId] = useState<string | null>(null);
+  const [updatingLinkId, setUpdatingLinkId] = useState<string | null>(null);
   const [bitlyForms, setBitlyForms] = useState<Record<string, string>>({});
+  const [editingLinkId, setEditingLinkId] = useState<string | null>(null);
+  const [linkEditForms, setLinkEditForms] = useState<Record<string, LinkEditForm>>({});
+  const [editingCampaignId, setEditingCampaignId] = useState<string | null>(null);
+  const [campaignEditForms, setCampaignEditForms] = useState<Record<string, CampaignEditForm>>({});
   const [linkFilters, setLinkFilters] = useState({
     search: '',
+    client: '',
     campaign: '',
     content: '',
     utmId: '',
@@ -45,6 +165,7 @@ function App() {
   const [authForm, setAuthForm] = useState({ name: '', email: '', password: '' });
   const [loginForm, setLoginForm] = useState({ email: '', password: '' });
   const [campaignForm, setCampaignForm] = useState({
+    clientName: '',
     name: '',
     type: 'campanha' as CampaignRecord['type'],
     mainChannel: 'Multicanal',
@@ -61,6 +182,9 @@ function App() {
     password: '',
     role: 'editor' as UserRecord['role']
   });
+  const [userPasswordForms, setUserPasswordForms] = useState<Record<string, string>>({});
+  const [userEmailForms, setUserEmailForms] = useState<Record<string, string>>({});
+  const [userRoleForms, setUserRoleForms] = useState<Record<string, UserRole>>({});
   const [documentForm, setDocumentForm] = useState({
     title: '',
     url: '',
@@ -84,8 +208,11 @@ function App() {
   const optionCategories: Array<{ value: SelectOptionCategory; label: string }> = [
     { value: 'action_type', label: 'Tipo de ação' },
     { value: 'destination_type', label: 'Destino' },
-    { value: 'ad_type', label: 'Tipo de anúncio' },
+    { value: 'ad_type', label: 'Tipo de anúncio/formato' },
+    { value: 'utm_content', label: 'utm_content' },
+    { value: 'utm_term', label: 'utm_term' },
     { value: 'utm_id', label: 'utm_id' },
+    { value: 'client_name', label: 'Nome do cliente' },
     { value: 'campaign_type', label: 'Tipo de campanha' },
     { value: 'campaign_status', label: 'Status de campanha' }
   ];
@@ -95,6 +222,9 @@ function App() {
       .map((option) => ({ value: option.value, label: option.label }));
   const campaignTypeOptions = optionsByCategory('campaign_type');
   const campaignStatusOptions = optionsByCategory('campaign_status');
+  const clientNameOptions = settings.options
+    .filter((option) => option.category === 'client_name' && option.isActive)
+    .map((option) => ({ value: option.label, label: option.label }));
   const nextOptionSortOrder = (category: SelectOptionCategory) => {
     const categoryOptions = settings.options.filter((option) => option.category === category);
     return (Math.max(0, ...categoryOptions.map((option) => option.sortOrder)) || 0) + 10;
@@ -103,7 +233,10 @@ function App() {
     ? DEFAULT_TOP_LOGO_URL
     : settings.brand.topLogoUrl;
   const appName = settings.brand.appName || DEFAULT_BRAND.appName;
+  const funGifUrl = settings.brand.funGifUrl || '';
+  const lastBackupLabel = formatBackupLabel(health?.backup?.lastBackupAt, health?.backup?.status);
   const canManageDocuments = user ? ['admin', 'editor'].includes(user.role) : false;
+  const isSuperUser = user?.email.toLowerCase() === 'rafael@adrock.com.br';
   const getLinkChannelLabel = (link: LinkRecord) => {
     const source = link.utm_source.toLowerCase();
     const medium = link.utm_medium.toLowerCase();
@@ -119,6 +252,7 @@ function App() {
     Array.from(new Set(links.map((link) => getValue(link)?.trim()).filter(Boolean) as string[]))
       .sort((a, b) => a.localeCompare(b, 'pt-BR'));
   const linkCampaignOptions = useMemo(() => uniqueLinkValues((link) => link.utm_campaign), [links]);
+  const linkClientOptions = useMemo(() => uniqueLinkValues((link) => link.campaign_client_name), [links]);
   const linkContentOptions = useMemo(() => uniqueLinkValues((link) => link.utm_content), [links]);
   const linkUtmIdOptions = useMemo(() => uniqueLinkValues((link) => link.utm_id), [links]);
   const linkChannelOptions = useMemo(() => uniqueLinkValues((link) => getLinkChannelLabel(link)), [links, settings.channelPresets]);
@@ -130,6 +264,8 @@ function App() {
     return links.filter((link) => {
       const searchable = [
         link.internal_name,
+        link.campaign_client_name,
+        link.campaign_name,
         link.base_url,
         link.final_url,
         link.utm_campaign,
@@ -142,6 +278,7 @@ function App() {
       const createdAt = new Date(link.created_at);
 
       if (search && !searchable.includes(search)) return false;
+      if (linkFilters.client && link.campaign_client_name !== linkFilters.client) return false;
       if (linkFilters.campaign && link.utm_campaign !== linkFilters.campaign) return false;
       if (linkFilters.content && link.utm_content !== linkFilters.content) return false;
       if (linkFilters.utmId && link.utm_id !== linkFilters.utmId) return false;
@@ -214,11 +351,15 @@ function App() {
 
   async function handleLoginSubmit(event: React.FormEvent) {
     event.preventDefault();
-    const result = await api.login(loginForm);
-    setStoredToken(result.token);
-    setUser(result.user);
-    setLoginForm({ email: '', password: '' });
-    await loadAppData(result.user);
+    try {
+      const result = await api.login(loginForm);
+      setStoredToken(result.token);
+      setUser(result.user);
+      setLoginForm({ email: '', password: '' });
+      await loadAppData(result.user);
+    } catch (error) {
+      alert(error instanceof Error ? error.message : 'Não foi possível entrar agora.');
+    }
   }
 
   async function handleLogout() {
@@ -251,6 +392,7 @@ function App() {
     event.preventDefault();
     await api.createCampaign(campaignForm);
     setCampaignForm({
+      clientName: '',
       name: '',
       type: 'campanha',
       mainChannel: 'Multicanal',
@@ -262,6 +404,46 @@ function App() {
       description: ''
     });
     if (user) await loadAppData(user);
+  }
+
+  function handleStartEditCampaign(campaign: CampaignRecord) {
+    setEditingCampaignId(campaign.id);
+    setCampaignEditForms((current) => ({
+      ...current,
+      [campaign.id]: campaignToForm(campaign)
+    }));
+  }
+
+  function handleCancelEditCampaign(id: string) {
+    setEditingCampaignId((current) => (current === id ? null : current));
+    setCampaignEditForms((current) => {
+      const next = { ...current };
+      delete next[id];
+      return next;
+    });
+  }
+
+  function handleCampaignEditChange(id: string, field: keyof CampaignEditForm, value: string) {
+    setCampaignEditForms((current) => {
+      const currentForm = current[id];
+      if (!currentForm) return current;
+      return { ...current, [id]: { ...currentForm, [field]: value } };
+    });
+  }
+
+  async function handleUpdateCampaign(campaign: CampaignRecord) {
+    const form = campaignEditForms[campaign.id];
+    if (!form) return;
+
+    if (!form.name.trim()) {
+      alert('Informe o nome da campanha.');
+      return;
+    }
+
+    await api.updateCampaign(campaign.id, form);
+    handleCancelEditCampaign(campaign.id);
+    if (user) await loadAppData(user);
+    alert('Campanha atualizada com sucesso.');
   }
 
   async function handleCreateUser(event: React.FormEvent) {
@@ -299,6 +481,77 @@ function App() {
     if (user) await loadAppData(user);
   }
 
+  function handleStartEditLink(link: LinkRecord) {
+    setEditingLinkId(link.id);
+    setLinkEditForms((current) => ({
+      ...current,
+      [link.id]: {
+        campaignId: link.campaign_id,
+        baseUrl: link.base_url,
+        utmSource: link.utm_source,
+        utmMedium: link.utm_medium,
+        utmCampaign: link.utm_campaign,
+        utmTerm: link.utm_term || '',
+        utmContent: link.utm_content || '',
+        utmId: link.utm_id || '',
+        finalUrl: link.final_url,
+        internalName: link.internal_name || '',
+        actionType: link.action_type || '',
+        destinationType: link.destination_type || '',
+        adGroupName: link.ad_group_name || '',
+        adType: link.ad_type || '',
+        notes: link.notes || '',
+        syncBitlyDestination: Boolean(link.bitly_url)
+      }
+    }));
+  }
+
+  function handleCancelEditLink(id: string) {
+    setEditingLinkId((current) => (current === id ? null : current));
+    setLinkEditForms((current) => {
+      const next = { ...current };
+      delete next[id];
+      return next;
+    });
+  }
+
+  function handleLinkEditChange(id: string, field: keyof LinkEditForm, value: string | boolean) {
+    setLinkEditForms((current) => {
+      const currentForm = current[id];
+      if (!currentForm) return current;
+
+      const nextForm = { ...currentForm, [field]: value };
+      if (['baseUrl', 'utmSource', 'utmMedium', 'utmCampaign', 'utmTerm', 'utmContent', 'utmId'].includes(field)) {
+        nextForm.finalUrl = buildFinalUrlFromPayload(nextForm);
+      }
+
+      return { ...current, [id]: nextForm };
+    });
+  }
+
+  async function handleUpdateLink(link: LinkRecord) {
+    const form = linkEditForms[link.id];
+    if (!form) return;
+
+    if (!form.baseUrl || !form.utmSource || !form.utmMedium || !form.utmCampaign || !form.finalUrl) {
+      alert('URL base, source, medium, campaign e URL final são obrigatórios.');
+      return;
+    }
+
+    setUpdatingLinkId(link.id);
+    try {
+      const result = await api.updateLink(link.id, form);
+      handleCancelEditLink(link.id);
+      if (user) await loadAppData(user);
+      alert(result.bitlyUpdated ? 'Link e destino do Bitly atualizados.' : 'Link atualizado com sucesso.');
+    } catch (error) {
+      if (user) await loadAppData(user);
+      alert(error instanceof Error ? error.message : 'Erro ao atualizar link.');
+    } finally {
+      setUpdatingLinkId(null);
+    }
+  }
+
   async function handleDeleteDocument(id: string) {
     await api.deleteDocument(id);
     if (user) await loadAppData(user);
@@ -333,6 +586,66 @@ function App() {
       status: item.status === 'active' ? 'inactive' : 'active'
     });
     if (user) await loadAppData(user);
+  }
+
+  async function handleResetUserPassword(item: UserRecord) {
+    const password = userPasswordForms[item.id]?.trim() || '';
+    if (password.length < 8) {
+      alert('Informe uma senha com pelo menos 8 caracteres.');
+      return;
+    }
+
+    await api.resetUserPassword(item.id, password);
+    setUserPasswordForms((current) => ({ ...current, [item.id]: '' }));
+    alert(`Senha de ${item.name} atualizada.`);
+  }
+
+  async function handleUpdateUserEmail(item: UserRecord) {
+    const email = (userEmailForms[item.id] ?? item.email).trim().toLowerCase();
+    if (!email) {
+      alert('Informe um email válido.');
+      return;
+    }
+
+    try {
+      await api.updateUser(item.id, { email });
+      setUserEmailForms((current) => {
+        const next = { ...current };
+        delete next[item.id];
+        return next;
+      });
+      if (item.id === user?.id) {
+        setUser((current) => current ? { ...current, email } : current);
+      }
+      if (user) await loadAppData(user);
+      alert(`Email de login de ${item.name} atualizado.`);
+    } catch (error) {
+      alert(error instanceof Error ? error.message : 'Não foi possível atualizar o email agora.');
+    }
+  }
+
+  async function handleUpdateUserRole(item: UserRecord) {
+    const role = userRoleForms[item.id] ?? item.role;
+    if (role === item.role) {
+      alert(`${item.name} já está com o perfil ${userRoleLabels[role]}.`);
+      return;
+    }
+
+    try {
+      await api.updateUser(item.id, { role });
+      setUserRoleForms((current) => {
+        const next = { ...current };
+        delete next[item.id];
+        return next;
+      });
+      if (item.id === user?.id) {
+        setUser((current) => current ? { ...current, role, isAdmin: role === 'admin' } : current);
+      }
+      if (user) await loadAppData(user);
+      alert(`Perfil de ${item.name} atualizado para ${userRoleLabels[role]}.`);
+    } catch (error) {
+      alert(error instanceof Error ? error.message : 'Não foi possível atualizar o perfil agora.');
+    }
   }
 
   async function handleCreateOption(event: React.FormEvent) {
@@ -374,6 +687,37 @@ function App() {
 
   async function handleResetLogo() {
     await api.resetBrandLogo();
+    if (user) await loadAppData(user);
+  }
+
+  async function handleFunGifUpload(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    if (file.type !== 'image/gif') {
+      alert('Envie um arquivo GIF.');
+      event.target.value = '';
+      return;
+    }
+    if (file.size > 3_000_000) {
+      alert('O GIF deve ter até 3 MB.');
+      event.target.value = '';
+      return;
+    }
+
+    try {
+      const dataUrl = await readFileAsDataUrl(file);
+      await api.updateBrandFunGif(dataUrl);
+      if (user) await loadAppData(user);
+      alert('GIF atualizado.');
+    } catch (error) {
+      alert(error instanceof Error ? error.message : 'Não foi possível subir o GIF agora.');
+    } finally {
+      event.target.value = '';
+    }
+  }
+
+  async function handleResetFunGif() {
+    await api.resetBrandFunGif();
     if (user) await loadAppData(user);
   }
 
@@ -473,11 +817,33 @@ function App() {
               <p className="mt-4 max-w-3xl text-base text-gray-600 sm:text-lg">
                 Vincule campanhas aos UTMs para gestão de dados.
               </p>
+              <div className="mt-5 flex flex-col items-start gap-4">
+                <button
+                  type="button"
+                  onClick={() => setActiveSection('updates')}
+                  className="inline-flex items-center rounded-2xl border border-[#c1d6e9] bg-white px-4 py-2 text-sm font-semibold text-gray-700"
+                >
+                  <FileClock className="mr-2 h-4 w-4" />
+                  Ver novidades do sistema
+                </button>
+                {funGifUrl && (
+                  <div className="inline-flex rounded-2xl border border-[#c1d6e9] bg-white/80 p-2 shadow-sm">
+                    <img
+                      src={funGifUrl}
+                      alt="Animação do sistema"
+                      className="h-24 w-32 rounded-xl object-cover"
+                    />
+                  </div>
+                )}
+              </div>
             </div>
             <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-1">
               <InfoCard icon={Link2} title="Links governados" value={String(totalLinks)} />
               <InfoCard icon={BarChart3} title="Campanhas" value={String(totalCampaigns)} />
-              <InfoCard icon={ShieldCheck} title="Banco" value={health?.database || 'indisponível'} />
+              <div className="grid gap-3 sm:col-span-3 sm:grid-cols-2 lg:col-span-1">
+                <InfoCard icon={ShieldCheck} title="Banco" value={health?.database || 'indisponível'} />
+                <InfoCard icon={DatabaseBackup} title="Backup" value={lastBackupLabel} />
+              </div>
             </div>
           </div>
         </section>
@@ -519,6 +885,8 @@ function App() {
             actionTypeOptions={settings.options.filter((option) => option.category === 'action_type')}
             destinationTypeOptions={settings.options.filter((option) => option.category === 'destination_type')}
             adTypeOptions={settings.options.filter((option) => option.category === 'ad_type')}
+            utmContentOptions={settings.options.filter((option) => option.category === 'utm_content')}
+            utmTermOptions={settings.options.filter((option) => option.category === 'utm_term')}
             utmIdOptions={settings.options.filter((option) => option.category === 'utm_id')}
             onCreateCampaignRequest={() => setActiveSection('campaigns')}
             onSaveLink={handleSaveLink}
@@ -530,7 +898,16 @@ function App() {
           <div className="grid gap-6 xl:grid-cols-[1fr_1.2fr]">
             <Panel title="Nova campanha ou grupo de ações" subtitle="Base de governança para o catálogo de links.">
               <form onSubmit={handleCreateCampaign} className="space-y-4">
-                <Input label="Nome" value={campaignForm.name} onChange={(value) => setCampaignForm((current) => ({ ...current, name: value }))} />
+                <Select
+                  label="Nome do cliente"
+                  value={campaignForm.clientName}
+                  onChange={(value) => setCampaignForm((current) => ({ ...current, clientName: value }))}
+                  options={[
+                    { value: '', label: clientNameOptions.length > 0 ? 'Selecione um cliente' : 'Cadastre clientes em Cadastros' },
+                    ...clientNameOptions
+                  ]}
+                />
+                <Input label="Nome da campanha" value={campaignForm.name} onChange={(value) => setCampaignForm((current) => ({ ...current, name: value }))} />
                 <Select
                   label="Tipo"
                   value={campaignForm.type}
@@ -572,11 +949,12 @@ function App() {
                   Exportar CSV
                 </button>
               </div>
-              <div className="space-y-3">
+              <div className="max-h-[590px] space-y-3 overflow-y-auto pr-2">
                 {campaigns.map((campaign) => (
                   <div key={campaign.id} className="rounded-2xl border border-[#c1d6e9] bg-white p-4">
                     <div className="flex items-start justify-between gap-4">
                       <div>
+                        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#ff940e]">{campaign.client_name || 'Cliente não definido'}</p>
                         <p className="font-semibold text-gray-900">{campaign.name}</p>
                         <p className="text-sm text-gray-600">{campaign.type} · {campaign.status}</p>
                         <p className="mt-1 text-xs uppercase tracking-[0.16em] text-gray-500">
@@ -585,11 +963,76 @@ function App() {
                       </div>
                       <div className="text-right">
                         <p className="text-sm text-gray-600">{campaign.links_count || 0} links</p>
-                        <button onClick={() => handleDeleteCampaign(campaign.id)} className="mt-3 text-sm text-[#b42318]">
+                        <button onClick={() => handleStartEditCampaign(campaign)} className="mt-3 inline-flex items-center rounded-xl border border-[#c1d6e9] bg-white px-3 py-2 text-sm font-medium text-gray-700">
+                          <Pencil className="mr-2 h-4 w-4" />
+                          Editar
+                        </button>
+                        <button onClick={() => handleDeleteCampaign(campaign.id)} className="ml-2 mt-3 text-sm text-[#b42318]">
                           Excluir
                         </button>
                       </div>
                     </div>
+                    {editingCampaignId === campaign.id && campaignEditForms[campaign.id] && (
+                      <div className="mt-4 rounded-2xl border border-[#ffcf8a] bg-[#fff8ed] p-4">
+                        <p className="font-semibold text-gray-900">Editar campanha</p>
+                        <p className="mb-3 text-sm text-gray-600">Ajuste cliente, nome, datas, status e demais campos da campanha.</p>
+                        <div className="grid gap-3 lg:grid-cols-2">
+                          <Select
+                            label="Nome do cliente"
+                            value={campaignEditForms[campaign.id].clientName}
+                            onChange={(value) => handleCampaignEditChange(campaign.id, 'clientName', value)}
+                            options={[
+                              { value: '', label: 'Cliente não definido' },
+                              ...(campaign.client_name && !clientNameOptions.some((option) => option.value === campaign.client_name)
+                                ? [{ value: campaign.client_name, label: campaign.client_name }]
+                                : []),
+                              ...clientNameOptions
+                            ]}
+                          />
+                          <Input label="Nome da campanha" value={campaignEditForms[campaign.id].name} onChange={(value) => handleCampaignEditChange(campaign.id, 'name', value)} />
+                          <Select
+                            label="Tipo"
+                            value={campaignEditForms[campaign.id].type}
+                            onChange={(value) => handleCampaignEditChange(campaign.id, 'type', value)}
+                            options={[
+                              ...(campaignEditForms[campaign.id].type && !campaignTypeOptions.some((option) => option.value === campaignEditForms[campaign.id].type)
+                                ? [{ value: campaignEditForms[campaign.id].type, label: campaignEditForms[campaign.id].type }]
+                                : []),
+                              ...(campaignTypeOptions.length > 0 ? campaignTypeOptions : [
+                                { value: 'campanha', label: 'Campanha' },
+                                { value: 'pontual', label: 'Pontual' }
+                              ])
+                            ]}
+                          />
+                          <Select
+                            label="Status"
+                            value={campaignEditForms[campaign.id].status}
+                            onChange={(value) => handleCampaignEditChange(campaign.id, 'status', value)}
+                            options={campaignStatusOptions.length > 0 ? campaignStatusOptions : [
+                              { value: 'rascunho', label: 'Rascunho' },
+                              { value: 'ativo', label: 'Ativo' },
+                              { value: 'encerrado', label: 'Encerrado' }
+                            ]}
+                          />
+                          <Input label="Início" type="date" value={campaignEditForms[campaign.id].startsAt} onChange={(value) => handleCampaignEditChange(campaign.id, 'startsAt', value)} />
+                          <Input label="Fim" type="date" value={campaignEditForms[campaign.id].endsAt} onChange={(value) => handleCampaignEditChange(campaign.id, 'endsAt', value)} />
+                          <Input label="Canal principal" value={campaignEditForms[campaign.id].mainChannel} onChange={(value) => handleCampaignEditChange(campaign.id, 'mainChannel', value)} />
+                          <Input label="Source padrão" value={campaignEditForms[campaign.id].defaultSource} onChange={(value) => handleCampaignEditChange(campaign.id, 'defaultSource', value)} />
+                          <Input label="Medium padrão" value={campaignEditForms[campaign.id].defaultMedium} onChange={(value) => handleCampaignEditChange(campaign.id, 'defaultMedium', value)} />
+                          <div className="lg:col-span-2">
+                            <TextArea label="Descrição" value={campaignEditForms[campaign.id].description} onChange={(value) => handleCampaignEditChange(campaign.id, 'description', value)} />
+                          </div>
+                        </div>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          <button type="button" onClick={() => handleUpdateCampaign(campaign)} className="rounded-2xl bg-[linear-gradient(135deg,#ff940e_0%,#ff0e03_100%)] px-4 py-2 text-sm font-semibold text-white">
+                            Salvar alterações
+                          </button>
+                          <button type="button" onClick={() => handleCancelEditCampaign(campaign.id)} className="rounded-2xl border border-[#c1d6e9] bg-white px-4 py-2 text-sm font-medium text-gray-700">
+                            Cancelar
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
@@ -622,6 +1065,17 @@ function App() {
                     className="w-full rounded-2xl border border-[#c1d6e9] bg-white px-3 py-2 text-sm outline-none focus:border-[#ff940e]"
                     placeholder="Nome, URL, campanha, peça, utm_id..."
                   />
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-gray-700">Cliente</label>
+                  <select
+                    value={linkFilters.client}
+                    onChange={(event) => setLinkFilters((current) => ({ ...current, client: event.target.value }))}
+                    className="w-full rounded-2xl border border-[#c1d6e9] bg-white px-3 py-2 text-sm outline-none focus:border-[#ff940e]"
+                  >
+                    <option value="">Todos</option>
+                    {linkClientOptions.map((value) => <option key={value} value={value}>{value}</option>)}
+                  </select>
                 </div>
                 <div>
                   <label className="mb-1 block text-sm font-medium text-gray-700">utm_campaign</label>
@@ -700,7 +1154,7 @@ function App() {
               </div>
               {hasLinkFilters && (
                 <button
-                  onClick={() => setLinkFilters({ search: '', campaign: '', content: '', utmId: '', channel: '', dateFrom: '', dateTo: '', bitly: '' })}
+                  onClick={() => setLinkFilters({ search: '', client: '', campaign: '', content: '', utmId: '', channel: '', dateFrom: '', dateTo: '', bitly: '' })}
                   className="mt-3 text-sm font-medium text-[#b42318]"
                 >
                   Limpar filtros
@@ -713,18 +1167,131 @@ function App() {
                   Nenhum link encontrado com os filtros atuais.
                 </div>
               )}
-              {filteredLinks.map((link) => (
+              {filteredLinks.map((link) => {
+                const editForm = linkEditForms[link.id];
+                const isEditing = editingLinkId === link.id && Boolean(editForm);
+                const actionTypeOptions = settings.options.filter((option) => option.category === 'action_type' && option.isActive);
+                const destinationTypeOptions = settings.options.filter((option) => option.category === 'destination_type' && option.isActive);
+                const adTypeOptions = settings.options.filter((option) => option.category === 'ad_type' && option.isActive);
+
+                return (
                 <div key={link.id} className="rounded-2xl border border-[#c1d6e9] bg-white p-4">
-                  <div className="flex items-start justify-between gap-4">
+                  <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                     <div className="min-w-0">
                       <p className="font-semibold text-gray-900">{link.internal_name || 'sem nome interno'}</p>
+                      <p className="text-sm text-gray-600">Cliente: {link.campaign_client_name || 'sem cliente vinculado'}</p>
                       <p className="text-sm text-gray-600">utm_campaign: {link.utm_campaign || 'sem campanha'}</p>
                       <p className="text-sm text-gray-600">utm_content: {link.utm_content || 'sem conteúdo'}</p>
                       <p className="text-sm text-gray-600">utm_id: {link.utm_id || 'sem utm_id'}</p>
                       <p className="text-sm text-gray-600">Canal GA4: {getLinkChannelLabel(link)}</p>
                       <p className="text-sm text-gray-600">Nome interno: {link.internal_name || 'sem nome interno'}</p>
                       <p className="mt-1 text-sm text-gray-600">Tipo de ação: {link.action_type || 'sem ação'}</p>
+                      {link.notes && (
+                        <div className="mt-2 rounded-2xl border border-[#c1d6e9] bg-[#f8fbff] px-3 py-2 text-sm text-gray-700">
+                          <p className="font-semibold text-gray-900">Observações</p>
+                          <p className="mt-1 whitespace-pre-wrap">{link.notes}</p>
+                        </div>
+                      )}
                       <p className="mt-2 break-all text-sm text-gray-700">{link.final_url}</p>
+                      {isEditing && editForm && (
+                        <div className="mt-4 rounded-2xl border border-[#ffcf8a] bg-[#fff8ed] p-4">
+                          <div className="mb-3 flex items-start justify-between gap-3">
+                            <div>
+                              <p className="font-semibold text-gray-900">Editar link salvo</p>
+                              <p className="text-sm text-gray-600">Ajuste os campos e salve para recalcular a URL parametrizada.</p>
+                            </div>
+                            {link.bitly_url && (
+                              <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700">
+                                tem Bitly
+                              </span>
+                            )}
+                          </div>
+                          <div className="grid gap-3 lg:grid-cols-2">
+                            <Input label="URL Base" type="url" value={editForm.baseUrl} onChange={(value) => handleLinkEditChange(link.id, 'baseUrl', value)} />
+                            <Input label="Nome interno do link" value={editForm.internalName} onChange={(value) => handleLinkEditChange(link.id, 'internalName', value)} />
+                            <Input label="Campaign Source (utm_source)" value={editForm.utmSource} onChange={(value) => handleLinkEditChange(link.id, 'utmSource', value)} />
+                            <Input label="Campaign Medium (utm_medium)" value={editForm.utmMedium} onChange={(value) => handleLinkEditChange(link.id, 'utmMedium', value)} />
+                            <Input label="utm_campaign" value={editForm.utmCampaign} onChange={(value) => handleLinkEditChange(link.id, 'utmCampaign', value)} />
+                            <Input label="utm_term" value={editForm.utmTerm || ''} onChange={(value) => handleLinkEditChange(link.id, 'utmTerm', value)} />
+                            <Input label="utm_content" value={editForm.utmContent || ''} onChange={(value) => handleLinkEditChange(link.id, 'utmContent', value)} />
+                            <Input label="utm_id" value={editForm.utmId || ''} onChange={(value) => handleLinkEditChange(link.id, 'utmId', value)} />
+                            <Select
+                              label="Tipo de ação"
+                              value={editForm.actionType || ''}
+                              onChange={(value) => handleLinkEditChange(link.id, 'actionType', value)}
+                              options={[
+                                { value: '', label: 'Sem ação' },
+                                ...(editForm.actionType && !actionTypeOptions.some((option) => option.value === editForm.actionType)
+                                  ? [{ value: editForm.actionType, label: editForm.actionType }]
+                                  : []),
+                                ...actionTypeOptions.map((option) => ({ value: option.value, label: option.label }))
+                              ]}
+                            />
+                            <Select
+                              label="Destino"
+                              value={editForm.destinationType || ''}
+                              onChange={(value) => handleLinkEditChange(link.id, 'destinationType', value)}
+                              options={[
+                                { value: '', label: 'Sem destino' },
+                                ...(editForm.destinationType && !destinationTypeOptions.some((option) => option.value === editForm.destinationType)
+                                  ? [{ value: editForm.destinationType, label: editForm.destinationType }]
+                                  : []),
+                                ...destinationTypeOptions.map((option) => ({ value: option.value, label: option.label }))
+                              ]}
+                            />
+                            <Input label="Grupo de anúncio" value={editForm.adGroupName || ''} onChange={(value) => handleLinkEditChange(link.id, 'adGroupName', value)} />
+                            <Select
+                              label="Tipo de anúncio/formato"
+                              value={editForm.adType || ''}
+                              onChange={(value) => handleLinkEditChange(link.id, 'adType', value)}
+                              options={[
+                                { value: '', label: 'Sem tipo' },
+                                ...(editForm.adType && !adTypeOptions.some((option) => option.value === editForm.adType)
+                                  ? [{ value: editForm.adType, label: editForm.adType }]
+                                  : []),
+                                ...adTypeOptions.map((option) => ({ value: option.value, label: option.label }))
+                              ]}
+                            />
+                            <div className="lg:col-span-2">
+                              <TextArea label="Observações" value={editForm.notes || ''} onChange={(value) => handleLinkEditChange(link.id, 'notes', value)} />
+                            </div>
+                          </div>
+                          <div className="mt-3 rounded-2xl border border-[#c1d6e9] bg-white px-4 py-3 text-sm">
+                            <p className="font-semibold text-gray-900">URL parametrizada atualizada</p>
+                            <p className="mt-1 break-all text-gray-700">{editForm.finalUrl || 'Informe uma URL base válida para recalcular.'}</p>
+                          </div>
+                          {link.bitly_url && (
+                            <label className="mt-3 flex items-start gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+                              <input
+                                type="checkbox"
+                                checked={Boolean(editForm.syncBitlyDestination)}
+                                onChange={(event) => handleLinkEditChange(link.id, 'syncBitlyDestination', event.target.checked)}
+                                className="mt-1"
+                              />
+                              <span>
+                                Atualizar também o destino do Bitly para esta nova URL. O nome curto atual será mantido.
+                              </span>
+                            </label>
+                          )}
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            <button
+                              type="button"
+                              onClick={() => handleUpdateLink(link)}
+                              disabled={updatingLinkId === link.id}
+                              className="inline-flex items-center rounded-2xl bg-[linear-gradient(135deg,#ff940e_0%,#ff0e03_100%)] px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              {updatingLinkId === link.id ? 'Salvando...' : 'Salvar alterações'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleCancelEditLink(link.id)}
+                              className="inline-flex items-center rounded-2xl border border-[#c1d6e9] bg-white px-4 py-2 text-sm font-medium text-gray-700"
+                            >
+                              Cancelar
+                            </button>
+                          </div>
+                        </div>
+                      )}
                       {link.bitly_url ? (
                         <div className="mt-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm">
                           <p className="font-semibold text-emerald-800">Bitly criado</p>
@@ -757,12 +1324,22 @@ function App() {
                         </div>
                       )}
                     </div>
-                    <button onClick={() => handleDeleteLink(link.id)} className="text-sm text-[#b42318]">
-                      Excluir
-                    </button>
+                    <div className="flex shrink-0 flex-wrap gap-2 lg:flex-col lg:items-end">
+                      <button
+                        onClick={() => (isEditing ? handleCancelEditLink(link.id) : handleStartEditLink(link))}
+                        className="inline-flex items-center rounded-2xl border border-[#c1d6e9] bg-white px-3 py-2 text-sm font-medium text-gray-700"
+                      >
+                        {isEditing ? <X className="mr-2 h-4 w-4" /> : <Pencil className="mr-2 h-4 w-4" />}
+                        {isEditing ? 'Fechar edição' : 'Editar'}
+                      </button>
+                      <button onClick={() => handleDeleteLink(link.id)} className="rounded-2xl border border-[#ffd1ce] bg-white px-3 py-2 text-sm text-[#b42318]">
+                        Excluir
+                      </button>
+                    </div>
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
           </Panel>
         )}
@@ -819,6 +1396,24 @@ function App() {
           </div>
         )}
 
+        {activeSection === 'updates' && (
+          <Panel title="Novidades do sistema" subtitle="Registro simples das mudanças liberadas para orientar o time após cada atualização.">
+            <div className="space-y-4">
+              {releaseNotes.map((release) => (
+                <div key={release.version} className="rounded-2xl border border-[#c1d6e9] bg-white p-4">
+                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#ff940e]">{release.version}</p>
+                  <h3 className="mt-2 text-lg font-bold text-gray-900">{release.title}</h3>
+                  <ul className="mt-3 space-y-2 text-sm text-gray-700">
+                    {release.items.map((item) => (
+                      <li key={item}>• {item}</li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+            </div>
+          </Panel>
+        )}
+
         {activeSection === 'users' && user.isAdmin && (
           <div className="grid gap-6 xl:grid-cols-[1fr_1.2fr]">
             <Panel title="Novo usuário" subtitle="Admin da instalação controla acessos próprios do cliente.">
@@ -830,11 +1425,7 @@ function App() {
                   label="Perfil"
                   value={userForm.role}
                   onChange={(value) => setUserForm((current) => ({ ...current, role: value as UserRecord['role'] }))}
-                  options={[
-                    { value: 'admin', label: 'Admin' },
-                    { value: 'editor', label: 'Editor' },
-                    { value: 'viewer', label: 'Viewer' }
-                  ]}
+                  options={userRoleOptions}
                 />
                 <button className="inline-flex items-center rounded-2xl bg-[linear-gradient(135deg,#ff940e_0%,#ff0e03_100%)] px-5 py-3 font-semibold text-white">
                   <Plus className="mr-2 h-4 w-4" />
@@ -844,14 +1435,14 @@ function App() {
             </Panel>
 
             <Panel title="Usuários da instalação" subtitle="Perfis e status de acesso do tenant atual.">
-              <div className="space-y-3">
+              <div className="max-h-[42rem] space-y-3 overflow-y-auto pr-2">
                 {users.map((item) => (
                   <div key={item.id} className="rounded-2xl border border-[#c1d6e9] bg-white p-4">
                     <div className="flex items-start justify-between gap-4">
                       <div>
                         <p className="font-semibold text-gray-900">{item.name}</p>
                         <p className="text-sm text-gray-600">{item.email}</p>
-                        <p className="mt-1 text-xs uppercase tracking-[0.16em] text-gray-500">{item.role}</p>
+                        <p className="mt-1 text-xs uppercase tracking-[0.16em] text-gray-500">{userRoleLabels[item.role]}</p>
                       </div>
                       <div className="text-right">
                         <span className={`rounded-full px-2 py-1 text-xs ${item.status === 'active' ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-200 text-gray-700'}`}>
@@ -864,6 +1455,51 @@ function App() {
                         </div>
                       </div>
                     </div>
+                    <div className="mt-4 grid gap-3 border-t border-[#c1d6e9]/70 pt-4 md:grid-cols-[1fr_auto] md:items-end">
+                      <Select
+                        label="Perfil de acesso"
+                        value={userRoleForms[item.id] ?? item.role}
+                        onChange={(role) => setUserRoleForms((current) => ({ ...current, [item.id]: role as UserRole }))}
+                        options={userRoleOptions}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleUpdateUserRole(item)}
+                        className="rounded-2xl border border-[#c1d6e9] bg-white px-4 py-3 text-sm font-semibold text-gray-700"
+                      >
+                        Salvar perfil
+                      </button>
+                    </div>
+                    <div className="mt-4 grid gap-3 border-t border-[#c1d6e9]/70 pt-4 md:grid-cols-[1fr_auto] md:items-end">
+                      <Input
+                        label="Email de login"
+                        type="email"
+                        value={userEmailForms[item.id] ?? item.email}
+                        onChange={(email) => setUserEmailForms((current) => ({ ...current, [item.id]: email }))}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleUpdateUserEmail(item)}
+                        className="rounded-2xl border border-[#c1d6e9] bg-white px-4 py-3 text-sm font-semibold text-gray-700"
+                      >
+                        Salvar email
+                      </button>
+                    </div>
+                    <div className="mt-4 grid gap-3 border-t border-[#c1d6e9]/70 pt-4 md:grid-cols-[1fr_auto] md:items-end">
+                      <Input
+                        label="Nova senha"
+                        type="password"
+                        value={userPasswordForms[item.id] || ''}
+                        onChange={(password) => setUserPasswordForms((current) => ({ ...current, [item.id]: password }))}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleResetUserPassword(item)}
+                        className="rounded-2xl border border-[#c1d6e9] bg-white px-4 py-3 text-sm font-semibold text-gray-700"
+                      >
+                        Alterar senha
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -873,32 +1509,68 @@ function App() {
 
         {activeSection === 'settings' && user.isAdmin && (
           <div className="w-full space-y-6">
-            <Panel title="Marca do topo" subtitle="Troque a logo exibida no topo do sistema. Use imagem quadrada, preferencialmente 512x512 ou 1024x1024. Ela será exibida em 56x56 px.">
-              <div className="flex flex-col gap-5">
-                <div className="flex items-center gap-4">
-                  <img src={topLogoUrl} alt="Logo atual" className="h-14 w-14 rounded-2xl object-contain" />
-                  <div>
-                    <p className="font-semibold text-gray-900">Logo atual</p>
-                    <p className="text-sm text-gray-600">Exibição fixa: {settings.brand.topLogoSize}px x {settings.brand.topLogoSize}px</p>
+            {isSuperUser ? (
+              <Panel title="Marca do topo" subtitle="Troque a logo, o nome do sistema e o GIF animado exibidos no topo. Essas opções ficam restritas ao superusuário.">
+                <div className="flex flex-col gap-6">
+                  <div className="flex items-center gap-4">
+                    <img src={topLogoUrl} alt="Logo atual" className="h-14 w-14 rounded-2xl object-contain" />
+                    <div>
+                      <p className="font-semibold text-gray-900">Logo atual</p>
+                      <p className="text-sm text-gray-600">Exibição fixa: {settings.brand.topLogoSize}px x {settings.brand.topLogoSize}px</p>
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <label className="inline-flex cursor-pointer items-center rounded-2xl border border-[#c1d6e9] bg-white px-4 py-2 text-sm font-medium text-gray-700">
+                      Subir logo
+                      <input type="file" accept="image/png,image/jpeg,image/webp" onChange={handleLogoUpload} className="sr-only" />
+                    </label>
+                    <button type="button" onClick={handleResetLogo} className="rounded-2xl border border-[#ffd1ce] bg-white px-4 py-2 text-sm font-medium text-[#b42318]">
+                      Restaurar padrão
+                    </button>
+                  </div>
+
+                  <form onSubmit={handleUpdateBrand} className="space-y-3 border-t border-[#c1d6e9]/70 pt-5">
+                    <Input label="Nome do sistema" value={brandForm.appName} onChange={(appName) => setBrandForm({ appName })} />
+                    <button className="inline-flex items-center rounded-2xl bg-[linear-gradient(135deg,#ff940e_0%,#ff0e03_100%)] px-5 py-3 font-semibold text-white">
+                      Salvar nome
+                    </button>
+                  </form>
+
+                  <div className="space-y-4 border-t border-[#c1d6e9]/70 pt-5">
+                    <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+                      {funGifUrl ? (
+                        <img src={funGifUrl} alt="GIF atual" className="h-24 w-32 rounded-2xl border border-[#c1d6e9] object-cover p-1" />
+                      ) : (
+                        <div className="flex h-24 w-32 items-center justify-center rounded-2xl border border-dashed border-[#c1d6e9] bg-[#f6f9fc] text-xs font-semibold uppercase tracking-[0.18em] text-gray-500">
+                          Sem GIF
+                        </div>
+                      )}
+                      <div>
+                        <p className="font-semibold text-gray-900">GIF animado do topo</p>
+                        <p className="text-sm text-gray-600">Use um GIF pequeno, até 3 MB. Ele será exibido em uma caixa compacta com bordas arredondadas.</p>
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <label className="inline-flex cursor-pointer items-center rounded-2xl border border-[#c1d6e9] bg-white px-4 py-2 text-sm font-medium text-gray-700">
+                        Subir GIF
+                        <input type="file" accept="image/gif" onChange={handleFunGifUpload} className="sr-only" />
+                      </label>
+                      {funGifUrl && (
+                        <button type="button" onClick={handleResetFunGif} className="rounded-2xl border border-[#ffd1ce] bg-white px-4 py-2 text-sm font-medium text-[#b42318]">
+                          Remover GIF
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
-                <div className="flex flex-wrap gap-2">
-                  <label className="inline-flex cursor-pointer items-center rounded-2xl border border-[#c1d6e9] bg-white px-4 py-2 text-sm font-medium text-gray-700">
-                    Subir logo
-                    <input type="file" accept="image/png,image/jpeg,image/webp" onChange={handleLogoUpload} className="sr-only" />
-                  </label>
-                  <button type="button" onClick={handleResetLogo} className="rounded-2xl border border-[#ffd1ce] bg-white px-4 py-2 text-sm font-medium text-[#b42318]">
-                    Restaurar padrão
-                  </button>
-                </div>
-                <form onSubmit={handleUpdateBrand} className="space-y-3 border-t border-[#c1d6e9]/70 pt-5">
-                  <Input label="Nome do sistema" value={brandForm.appName} onChange={(appName) => setBrandForm({ appName })} />
-                  <button className="inline-flex items-center rounded-2xl bg-[linear-gradient(135deg,#ff940e_0%,#ff0e03_100%)] px-5 py-3 font-semibold text-white">
-                    Salvar nome
-                  </button>
-                </form>
-              </div>
-            </Panel>
+              </Panel>
+            ) : (
+              <Panel title="Marca do topo" subtitle="Logo, nome do sistema e GIF animado ficam sob controle do superusuário.">
+                <p className="text-sm text-gray-600">
+                  Somente rafael@adrock.com.br pode alterar estes itens de identidade visual.
+                </p>
+              </Panel>
+            )}
 
             <Panel title="Novo item de seleção" subtitle="Crie valores usados nos campos de seleção do sistema.">
               <form onSubmit={handleCreateOption} className="space-y-4">
@@ -936,12 +1608,22 @@ function App() {
               </form>
             </Panel>
 
-            <Panel title="Itens cadastrados" subtitle="Edite, ative, desative ou exclua valores de selects.">
-              <div className="max-h-[720px] space-y-4 overflow-y-auto pr-2">
+            <Panel title="Itens cadastrados" subtitle="Edite, ative, desative ou exclua valores de selects por categoria.">
+              <div className="grid gap-4 xl:grid-cols-2">
                 {optionCategories.map((category) => (
                   <div key={category.value} className="rounded-2xl border border-[#c1d6e9] bg-white p-4">
-                    <h3 className="font-semibold text-gray-900">{category.label}</h3>
-                    <div className="mt-3 space-y-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <h3 className="font-semibold text-gray-900">{category.label}</h3>
+                      <span className="rounded-full bg-[#f4f8fc] px-3 py-1 text-xs font-semibold text-gray-600">
+                        {settings.options.filter((option) => option.category === category.value).length} itens
+                      </span>
+                    </div>
+                    <div className="mt-3 max-h-[460px] space-y-3 overflow-y-auto pr-2">
+                      {settings.options.filter((option) => option.category === category.value).length === 0 && (
+                        <div className="rounded-2xl bg-[#f8fbff] p-4 text-sm text-gray-600">
+                          Nenhum item cadastrado nesta categoria.
+                        </div>
+                      )}
                       {settings.options.filter((option) => option.category === category.value).map((option) => {
                         const edit = optionEdits[option.id] || option;
                         return (
@@ -1006,7 +1688,7 @@ function App() {
 
         {activeSection === 'audit' && user.isAdmin && (
           <Panel title="Auditoria" subtitle="Últimos eventos de segurança e alterações registradas na instalação.">
-            <div className="space-y-3">
+            <div className="max-h-[45rem] space-y-3 overflow-y-auto pr-2">
               {auditLogs.map((log) => (
                 <div key={log.id} className="rounded-2xl border border-[#c1d6e9] bg-white p-4">
                   <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
@@ -1169,6 +1851,21 @@ function splitList(value: string) {
     .filter(Boolean);
 }
 
+function formatBackupLabel(lastBackupAt?: string | null, status?: string) {
+  if (lastBackupAt) {
+    return new Intl.DateTimeFormat('pt-BR', {
+      day: '2-digit',
+      month: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit'
+    }).format(new Date(lastBackupAt));
+  }
+
+  if (status === 'pending') return 'pendente';
+  if (status === 'unavailable') return 'indisponível';
+  return 'sem registro';
+}
+
 function readFileAsDataUrl(file: File) {
   return new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
@@ -1182,7 +1879,9 @@ function normalizeBrand(brand: Partial<SettingsRecord['brand']>): SettingsRecord
   return {
     appName: brand.appName || DEFAULT_BRAND.appName,
     topLogoUrl: brand.topLogoUrl || DEFAULT_BRAND.topLogoUrl,
-    topLogoSize: brand.topLogoSize || DEFAULT_BRAND.topLogoSize
+    topLogoSize: brand.topLogoSize || DEFAULT_BRAND.topLogoSize,
+    funGifUrl: brand.funGifUrl || DEFAULT_BRAND.funGifUrl,
+    funGifSize: brand.funGifSize || DEFAULT_BRAND.funGifSize
   };
 }
 
@@ -1196,6 +1895,54 @@ function normalizeSelectOptionValue(value: string) {
     .replace(/[^a-z0-9_-]/g, '_')
     .replace(/_+/g, '_')
     .replace(/^_+|_+$/g, '');
+}
+
+function campaignToForm(campaign: CampaignRecord): CampaignEditForm {
+  return {
+    clientName: campaign.client_name || '',
+    name: campaign.name || '',
+    type: campaign.type,
+    mainChannel: campaign.main_channel || 'Multicanal',
+    defaultSource: campaign.default_source || '',
+    defaultMedium: campaign.default_medium || '',
+    startsAt: formatDateInput(campaign.starts_at),
+    endsAt: formatDateInput(campaign.ends_at),
+    status: campaign.status,
+    description: campaign.description || ''
+  };
+}
+
+function formatDateInput(value?: string | null) {
+  if (!value) return '';
+  return value.slice(0, 10);
+}
+
+function buildFinalUrlFromPayload(payload: Pick<UpdateLinkPayload, 'baseUrl' | 'utmSource' | 'utmMedium' | 'utmCampaign' | 'utmTerm' | 'utmContent' | 'utmId'>) {
+  if (!payload.baseUrl) return '';
+
+  try {
+    const url = new URL(payload.baseUrl);
+    const params: Array<[string, string | undefined]> = [
+      ['utm_source', payload.utmSource],
+      ['utm_medium', payload.utmMedium],
+      ['utm_campaign', payload.utmCampaign],
+      ['utm_term', payload.utmTerm || undefined],
+      ['utm_content', payload.utmContent || undefined],
+      ['utm_id', payload.utmId || undefined]
+    ];
+
+    params.forEach(([key, value]) => {
+      if (value) {
+        url.searchParams.set(key, value);
+      } else {
+        url.searchParams.delete(key);
+      }
+    });
+
+    return url.toString();
+  } catch {
+    return '';
+  }
 }
 
 function suggestBitlyBackHalf(link: LinkRecord) {

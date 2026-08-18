@@ -3,6 +3,7 @@ import { pool } from '../db/pool.js';
 import { requireAdmin, requireAuth } from '../middleware/auth.js';
 import { logAudit } from '../utils/audit.js';
 import { generateId, hashPassword } from '../utils/security.js';
+import { isValidUserRole } from '../utils/users.js';
 
 const router = Router();
 
@@ -20,6 +21,9 @@ router.post('/', requireAdmin, async (req, res) => {
   const { name, email, password, role } = req.body;
   if (!name || !email || !password || !role) {
     return res.status(400).json({ error: 'Nome, email, senha e perfil são obrigatórios.' });
+  }
+  if (!isValidUserRole(role)) {
+    return res.status(400).json({ error: 'Perfil de usuário inválido.' });
   }
 
   const userId = generateId();
@@ -40,22 +44,38 @@ router.post('/', requireAdmin, async (req, res) => {
 
 router.patch('/:id', requireAdmin, async (req, res) => {
   const { id } = req.params;
-  const { name, role, status } = req.body;
+  const { name, email, role, status } = req.body;
+  const normalizedEmail = email === undefined ? null : String(email).trim().toLowerCase();
+
+  if (email !== undefined && !normalizedEmail) {
+    return res.status(400).json({ error: 'Email obrigatório.' });
+  }
+  if (role !== undefined && !isValidUserRole(role)) {
+    return res.status(400).json({ error: 'Perfil de usuário inválido.' });
+  }
+
+  if (normalizedEmail) {
+    const existing = await pool.query('select id from users where email = $1 and id <> $2', [normalizedEmail, id]);
+    if (existing.rows.length > 0) {
+      return res.status(409).json({ error: 'Já existe outro usuário com este email.' });
+    }
+  }
 
   await pool.query(
     `update users
      set name = coalesce($2, name),
-         role = coalesce($3, role),
-         status = coalesce($4, status)
+         email = coalesce($3, email),
+         role = coalesce($4, role),
+         status = coalesce($5, status)
      where id = $1`,
-    [id, name?.trim(), role, status]
+    [id, name?.trim(), normalizedEmail, role, status]
   );
   await logAudit({
     req,
     action: 'user_updated',
     entityType: 'user',
     entityId: id,
-    metadata: { name: name?.trim(), role, status }
+    metadata: { name: name?.trim(), email: normalizedEmail, role, status }
   });
 
   res.json({ success: true });
@@ -65,11 +85,11 @@ router.post('/:id/reset-password', requireAdmin, async (req, res) => {
   const { id } = req.params;
   const { password } = req.body;
 
-  if (!password) {
-    return res.status(400).json({ error: 'Nova senha obrigatória.' });
+  if (!password || String(password).trim().length < 8) {
+    return res.status(400).json({ error: 'A nova senha deve ter pelo menos 8 caracteres.' });
   }
 
-  await pool.query('update users set password_hash = $2 where id = $1', [id, hashPassword(password)]);
+  await pool.query('update users set password_hash = $2 where id = $1', [id, hashPassword(String(password).trim())]);
   await logAudit({
     req,
     action: 'user_password_reset',

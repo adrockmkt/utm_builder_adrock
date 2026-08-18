@@ -5,6 +5,15 @@ import { logAudit } from '../utils/audit.js';
 import { generateId } from '../utils/security.js';
 
 const router = Router();
+const SUPER_USER_EMAIL = 'rafael@adrock.com.br';
+
+function requireSuperUser(req, res, next) {
+  if (req.auth.user.email?.toLowerCase() !== SUPER_USER_EMAIL) {
+    return res.status(403).json({ error: 'Apenas o superusuario pode alterar marca, nome do sistema e GIF.' });
+  }
+
+  next();
+}
 
 router.get('/public-brand', async (_req, res) => {
   const appSettings = await loadBrandSettings();
@@ -35,7 +44,7 @@ router.get('/', async (_req, res) => {
   });
 });
 
-router.put('/brand', requireAdmin, async (req, res) => {
+router.put('/brand', requireSuperUser, async (req, res) => {
   const appName = String(req.body.appName || '').trim();
 
   if (!appName || appName.length > 80) {
@@ -61,7 +70,7 @@ router.put('/brand', requireAdmin, async (req, res) => {
   res.json({ success: true });
 });
 
-router.put('/brand-logo', requireAdmin, async (req, res) => {
+router.put('/brand-logo', requireSuperUser, async (req, res) => {
   const { dataUrl } = req.body;
 
   if (!dataUrl || !/^data:image\/(png|jpeg|webp);base64,/i.test(dataUrl)) {
@@ -91,7 +100,7 @@ router.put('/brand-logo', requireAdmin, async (req, res) => {
   res.json({ success: true });
 });
 
-router.delete('/brand-logo', requireAdmin, async (req, res) => {
+router.delete('/brand-logo', requireSuperUser, async (req, res) => {
   await pool.query(
     `update app_settings
      set value = $1,
@@ -105,6 +114,56 @@ router.delete('/brand-logo', requireAdmin, async (req, res) => {
     action: 'brand_logo_reset',
     entityType: 'app_setting',
     entityId: 'top_logo_url'
+  });
+
+  res.json({ success: true });
+});
+
+router.put('/brand-fun-gif', requireSuperUser, async (req, res) => {
+  const { dataUrl } = req.body;
+
+  if (!dataUrl || !/^data:image\/gif;base64,/i.test(dataUrl)) {
+    return res.status(400).json({ error: 'Envie um GIF animado valido.' });
+  }
+
+  if (dataUrl.length > 3_000_000) {
+    return res.status(400).json({ error: 'O GIF deve ter ate 3 MB.' });
+  }
+
+  await pool.query(
+    `insert into app_settings (key, value, updated_by, updated_at)
+     values ('fun_gif_url', $1, $2, now())
+     on conflict (key) do update
+     set value = excluded.value,
+         updated_by = excluded.updated_by,
+         updated_at = now()`,
+    [dataUrl, req.auth.user.id]
+  );
+  await logAudit({
+    req,
+    action: 'brand_fun_gif_updated',
+    entityType: 'app_setting',
+    entityId: 'fun_gif_url'
+  });
+
+  res.json({ success: true });
+});
+
+router.delete('/brand-fun-gif', requireSuperUser, async (req, res) => {
+  await pool.query(
+    `insert into app_settings (key, value, updated_by, updated_at)
+     values ('fun_gif_url', $1, $2, now())
+     on conflict (key) do update
+     set value = excluded.value,
+         updated_by = excluded.updated_by,
+         updated_at = now()`,
+    ['', req.auth.user.id]
+  );
+  await logAudit({
+    req,
+    action: 'brand_fun_gif_reset',
+    entityType: 'app_setting',
+    entityId: 'fun_gif_url'
   });
 
   res.json({ success: true });
@@ -217,7 +276,7 @@ async function loadBrandSettings() {
   const result = await pool.query(
     `select key, value
      from app_settings
-     where key in ('top_logo_url', 'app_name')`
+     where key in ('top_logo_url', 'app_name', 'fun_gif_url')`
   );
   return Object.fromEntries(result.rows.map((row) => [row.key, row.value]));
 }
@@ -226,7 +285,9 @@ function toBrandSettings(appSettings) {
   return {
     appName: appSettings.app_name || 'Ad Rock UTM Builder',
     topLogoUrl: appSettings.top_logo_url || '/utm-builder/adrock-logo.png',
-    topLogoSize: 56
+    topLogoSize: 56,
+    funGifUrl: appSettings.fun_gif_url || '',
+    funGifSize: 128
   };
 }
 
@@ -234,6 +295,8 @@ function normalizeValue(value) {
   return String(value || '')
     .trim()
     .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
     .replace(/\s+/g, '_')
     .replace(/[^a-z0-9_-]/g, '_')
     .replace(/_+/g, '_')

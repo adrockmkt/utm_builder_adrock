@@ -69,8 +69,8 @@ No servidor:
 sudo mkdir -p /var/www
 sudo chown -R $USER:www-data /var/www
 cd /var/www
-git clone https://github.com/adrockmkt/utm_builder_adrock.git
-cd utm_builder_adrock
+git clone https://github.com/adrockmkt/utm_builder.git
+cd utm_builder
 ```
 
 Criar os arquivos de ambiente:
@@ -136,7 +136,9 @@ Validar:
 - Admin inicial e criado
 - Login funciona
 - Health mostra banco conectado
+- Area `Cadastros` permite cadastrar nomes de clientes para uso nas campanhas
 - Campanha pode ser criada
+- Campanha pode ser editada, incluindo cliente, nome, datas, status e descricao
 - Link pode ser criado e salvo
 - Link de campanha preenche `utm_campaign`, `utm_term` e `utm_content` a partir de campanha, grupo de anuncio e conteudo/peca
 - Area `Cadastros` permite alterar tipos de acao, destinos, tipos de anuncio, canais GA4 e logo
@@ -147,7 +149,7 @@ Validar:
 
 A feature de encurtamento com Bitly esta implementada e documentada em [Integracao Bitly](./BITLY_INTEGRATION.md).
 
-Decisao recomendada:
+Decisao atual para o Porvir:
 
 - usar `bit.ly/nome-do-link`
 - nao usar dominio proprio
@@ -244,7 +246,7 @@ Instalar logrotate:
 sudo cp deploy/logrotate/utm-builder /etc/logrotate.d/utm-builder
 ```
 
-Em infraestrutura com monitoramento centralizado, enviar logs para o agente/servico escolhido pelo cliente.
+Em AWS, enviar logs para CloudWatch Agent quando o cliente exigir monitoramento centralizado.
 
 ## Rollback
 

@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+umask 027
 
 BACKUP_DIR="${BACKUP_DIR:-/var/backups/utm_builder}"
 RETENTION_DAYS="${RETENTION_DAYS:-14}"
@@ -13,6 +14,7 @@ fi
 
 mkdir -p "${BACKUP_DIR}"
 pg_dump "${DATABASE_URL}" --format=custom --file="${FILE}"
+chmod 600 "${FILE}"
 find "${BACKUP_DIR}" -name 'utm_builder-*.dump' -mtime "+${RETENTION_DAYS}" -delete
 
 echo "Backup created: ${FILE}"

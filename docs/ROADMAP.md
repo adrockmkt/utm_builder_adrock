@@ -6,7 +6,7 @@
 - manter gerador e validador
 - criar docs e governança
 - preparar backend próprio
-- preparar instalacao single-tenant por cliente
+- preparar AWS single-tenant
 
 ## Fase 2 - Governed Links
 
