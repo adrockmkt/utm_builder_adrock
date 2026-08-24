@@ -206,7 +206,7 @@ export async function loadSlackFormCatalog(poolLike = pool) {
        order by category, sort_order, label`
     ),
     poolLike.query(
-      `select sources, mediums
+      `select sources, mediums, default_medium
        from utm_channel_presets
        where is_active = true
        order by sort_order, label`
@@ -229,15 +229,15 @@ export async function loadSlackFormCatalog(poolLike = pool) {
     if (!optionsByCategory[category] || optionsByCategory[category].length === 0) {
       optionsByCategory[category] = fallbackOptions;
     }
+    optionsByCategory[category] = sortChoices(optionsByCategory[category]);
   }
 
   return {
-    sources: uniqueChoices(presetsResult.rows.flatMap((row) => row.sources || [])),
-    mediums: uniqueChoices(presetsResult.rows.flatMap((row) => row.mediums || [])),
-    campaigns: campaignsResult.rows.map((row) => ({
+    sourceMediumPairs: buildSourceMediumPairs(presetsResult.rows),
+    campaigns: sortChoices(campaignsResult.rows.map((row) => ({
       label: row.client_name ? `${row.client_name} - ${row.name}` : row.name,
       value: row.slug
-    })),
+    }))),
     optionsByCategory
   };
 }
@@ -255,13 +255,13 @@ export function buildUtmBuilderModal(triggerId, catalog = {}) {
       blocks: [
         staticSelectBlock('context_type', 'Contexto do link', [
           { label: 'Link pontual', value: 'pontual' },
-          { label: 'Campanha', value: 'campanha' }
-        ]),
+          { label: 'Campanha existente', value: 'campanha_existente' },
+          { label: 'Criar nova campanha', value: 'campanha_nova' }
+        ], false, true),
         optionalStaticSelectBlock('campaign_select', 'Campanha cadastrada', catalog.campaigns || []),
         textInputBlock('base_url', 'URL Base', 'https://cliente.com/produto'),
-        selectOrTextBlock('utm_source', 'Campaign Source (utm_source)', catalog.sources, 'google'),
-        selectOrTextBlock('utm_medium', 'Campaign Medium (utm_medium)', catalog.mediums, 'cpc'),
-        textInputBlock('utm_campaign', 'utm_campaign', 'campanha_teste'),
+        selectOrTextBlock('source_medium', 'Source + Medium (GA4)', catalog.sourceMediumPairs, 'google|cpc'),
+        textInputBlock('utm_campaign', 'Nome da nova campanha / utm_campaign', 'campanha_teste', true),
         selectOrTextBlock('utm_term', 'utm_term / grupo de anúncio', optionsByCategory.utm_term, 'remarketing_30d', true),
         selectOrTextBlock('utm_content', 'utm_content / peça', optionsByCategory.utm_content, 'banner_home', true),
         selectOrTextBlock('utm_id', 'utm_id / identificador', optionsByCategory.utm_id, 'criativo_01', true),
@@ -277,10 +277,11 @@ export function buildUtmBuilderModal(triggerId, catalog = {}) {
 
 export function buildModalPreviewView(view) {
   const values = extractModalValues(view);
+  const [utmSource, utmMedium] = parseSourceMedium(values.sourceMedium);
   const preview = buildPreviewResponse({
     url: values.baseUrl,
-    source: values.utmSource,
-    medium: values.utmMedium,
+    source: utmSource,
+    medium: utmMedium,
     campaign: values.selectedCampaignSlug || values.utmCampaign,
     term: values.utmTerm,
     content: values.utmContent,
@@ -297,7 +298,7 @@ export function buildModalPreviewView(view) {
       markdownSection(preview.text.replace('Preview de URL UTM:\n', '')),
       markdownSection([
         '*Campos recebidos:*',
-        `Tipo: ${values.contextType === 'campanha' ? 'Campanha' : 'Link pontual'}`,
+        `Tipo: ${contextTypeLabel(values.contextType)}`,
         `Campanha cadastrada: ${values.selectedCampaignSlug || 'não selecionada'}`,
         `Nome interno: ${values.internalName || 'não informado'}`,
         `Tipo de ação: ${values.actionType || 'não selecionado'}`,
@@ -382,8 +383,7 @@ function extractModalValues(view) {
     contextType: readModalValue(view, 'context_type') || 'pontual',
     selectedCampaignSlug: readModalValue(view, 'campaign_select'),
     baseUrl: readModalValue(view, 'base_url'),
-    utmSource: readModalValue(view, 'utm_source'),
-    utmMedium: readModalValue(view, 'utm_medium'),
+    sourceMedium: readModalValue(view, 'source_medium'),
     utmCampaign: readModalValue(view, 'utm_campaign'),
     utmTerm: readModalValue(view, 'utm_term'),
     utmContent: readModalValue(view, 'utm_content'),
@@ -434,8 +434,9 @@ function optionalStaticSelectBlock(blockId, label, choices = []) {
   return staticSelectBlock(blockId, label, choices, true);
 }
 
-function staticSelectBlock(blockId, label, choices, optional = false) {
-  const normalizedOptions = choices.slice(0, 100).map((choice) => option(choice.label, choice.value));
+function staticSelectBlock(blockId, label, choices, optional = false, preserveOrder = false) {
+  const sourceChoices = preserveOrder ? choices : sortChoices(choices);
+  const normalizedOptions = sourceChoices.slice(0, 100).map((choice) => option(choice.label, choice.value));
 
   return {
     type: 'input',
@@ -478,13 +479,13 @@ function markdownSection(text) {
 
 function uniqueChoices(values) {
   return Array.from(new Set(values.filter(Boolean).map((value) => String(value).trim()).filter(Boolean)))
-    .sort((a, b) => a.localeCompare(b))
+    .sort(compareLabels)
     .slice(0, 100)
     .map((value) => ({ label: value, value }));
 }
 
 function choiceList(values) {
-  return values.map((value) => ({ label: value, value }));
+  return sortChoices(values.map((value) => ({ label: value, value })));
 }
 
 function toSlackChoice(row) {
@@ -497,6 +498,52 @@ function toSlackChoice(row) {
 function truncateSlackText(value, maxLength) {
   const text = String(value || '');
   return text.length <= maxLength ? text : text.slice(0, maxLength);
+}
+
+function buildSourceMediumPairs(presets) {
+  const pairs = [];
+  for (const preset of presets) {
+    const medium = preset.default_medium || preset.mediums?.[0];
+    if (!medium) continue;
+    for (const source of preset.sources || []) {
+      pairs.push({
+        label: `${source} / ${medium}`,
+        value: `${source}|${medium}`
+      });
+    }
+  }
+
+  return sortChoices(dedupeChoices(pairs)).slice(0, 100);
+}
+
+function parseSourceMedium(value) {
+  const [source = '', medium = ''] = String(value || '').split('|');
+  return [source, medium];
+}
+
+function dedupeChoices(choices) {
+  const seen = new Set();
+  const result = [];
+  for (const choice of choices) {
+    if (!choice.value || seen.has(choice.value)) continue;
+    seen.add(choice.value);
+    result.push(choice);
+  }
+  return result;
+}
+
+function sortChoices(choices = []) {
+  return [...choices].sort((a, b) => compareLabels(a.label, b.label));
+}
+
+function compareLabels(a, b) {
+  return String(a || '').localeCompare(String(b || ''), 'pt-BR', { sensitivity: 'base' });
+}
+
+function contextTypeLabel(value) {
+  if (value === 'campanha_existente') return 'Campanha existente';
+  if (value === 'campanha_nova') return 'Criar nova campanha';
+  return 'Link pontual';
 }
 
 function requireAllowedTeam(req, res, next) {

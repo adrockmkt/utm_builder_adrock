@@ -29,8 +29,7 @@ test('preview response uses canonical engine', () => {
 
 test('utm builder modal asks for the same core web builder fields', () => {
   const modal = buildUtmBuilderModal('T123', {
-    sources: [{ label: 'Google', value: 'google' }],
-    mediums: [{ label: 'CPC', value: 'cpc' }],
+    sourceMediumPairs: [{ label: 'Google / CPC', value: 'google|cpc' }],
     campaigns: [{ label: 'Cliente - Campanha Teste', value: 'campanha_teste' }],
     optionsByCategory: {
       action_type: [{ label: 'Newsletter', value: 'newsletter' }],
@@ -49,8 +48,7 @@ test('utm builder modal asks for the same core web builder fields', () => {
     'context_type',
     'campaign_select',
     'base_url',
-    'utm_source',
-    'utm_medium',
+    'source_medium',
     'utm_campaign',
     'utm_term',
     'utm_content',
@@ -61,7 +59,12 @@ test('utm builder modal asks for the same core web builder fields', () => {
     'destination_type',
     'notes'
   ]);
-  assert.equal(modal.blocks.find((block) => block.block_id === 'utm_source').element.type, 'static_select');
+  assert.deepEqual(modal.blocks.find((block) => block.block_id === 'context_type').element.options.map((item) => item.value), [
+    'pontual',
+    'campanha_existente',
+    'campanha_nova'
+  ]);
+  assert.equal(modal.blocks.find((block) => block.block_id === 'source_medium').element.type, 'static_select');
   assert.equal(modal.blocks.find((block) => block.block_id === 'action_type').element.type, 'static_select');
 });
 
@@ -72,8 +75,7 @@ test('modal submission builds preview from entered answers', () => {
         context_type: { value: { selected_option: { value: 'pontual' } } },
         campaign_select: { value: { selected_option: null } },
         base_url: { value: { value: 'https://example.com/lp' } },
-        utm_source: { value: { selected_option: { value: 'Google' } } },
-        utm_medium: { value: { selected_option: { value: 'CPC' } } },
+        source_medium: { value: { selected_option: { value: 'Google|CPC' } } },
         utm_campaign: { value: { value: 'Campanha Teste' } },
         utm_term: { value: { value: '' } },
         utm_content: { value: { selected_option: { value: 'Banner Home' } } },
@@ -98,11 +100,10 @@ test('selected campaign fills utm_campaign like the web campaign flow', () => {
   const view = buildModalPreviewView({
     state: {
       values: {
-        context_type: { value: { selected_option: { value: 'campanha' } } },
+        context_type: { value: { selected_option: { value: 'campanha_existente' } } },
         campaign_select: { value: { selected_option: { value: 'campanha_cadastrada' } } },
         base_url: { value: { value: 'https://example.com/lp' } },
-        utm_source: { value: { selected_option: { value: 'instagram' } } },
-        utm_medium: { value: { selected_option: { value: 'paid_social' } } },
+        source_medium: { value: { selected_option: { value: 'instagram|paid_social' } } },
         utm_campaign: { value: { value: '' } },
         utm_term: { value: { selected_option: { value: 'grupo_a' } } },
         utm_content: { value: { selected_option: { value: 'story1' } } },
@@ -116,10 +117,44 @@ test('selected campaign fills utm_campaign like the web campaign flow', () => {
   assert.match(view.blocks[1].text.text, /utm_campaign=campanha_cadastrada/);
 });
 
+test('source and medium are locked into one selected pair', () => {
+  const view = buildModalPreviewView({
+    state: {
+      values: {
+        context_type: { value: { selected_option: { value: 'pontual' } } },
+        base_url: { value: { value: 'https://example.com/lp' } },
+        source_medium: { value: { selected_option: { value: 'twitter|social_media' } } },
+        utm_campaign: { value: { value: 'Teste Social' } },
+        utm_term: { value: { selected_option: null } },
+        utm_content: { value: { selected_option: null } },
+        utm_id: { value: { selected_option: null } }
+      }
+    }
+  });
+
+  assert.match(view.blocks[1].text.text, /utm_source=twitter/);
+  assert.match(view.blocks[1].text.text, /utm_medium=social_media/);
+});
+
+test('catalog source-medium pairs and select values are alphabetical', async () => {
+  const queries = [
+    { rows: [{ category: 'action_type', value: 'zebra', label: 'Zebra' }, { category: 'action_type', value: 'alpha', label: 'Alpha' }] },
+    { rows: [{ sources: ['twitter', 'google'], mediums: ['cpc', 'affiliate'], default_medium: 'cpc' }] },
+    { rows: [{ name: 'Zeta', slug: 'zeta', client_name: null }, { name: 'Alpha', slug: 'alpha', client_name: null }] }
+  ];
+  const catalog = await loadSlackFormCatalog({
+    query: async () => queries.shift()
+  });
+
+  assert.deepEqual(catalog.sourceMediumPairs.map((item) => item.label), ['google / cpc', 'twitter / cpc']);
+  assert.deepEqual(catalog.campaigns.map((item) => item.label), ['Alpha', 'Zeta']);
+  assert.deepEqual(catalog.optionsByCategory.action_type.map((item) => item.label), ['Alpha', 'Zebra']);
+});
+
 test('catalog uses web builder fallback options when database options are empty', async () => {
   const queries = [
     { rows: [] },
-    { rows: [{ sources: ['google'], mediums: ['cpc'] }] },
+    { rows: [{ sources: ['google'], mediums: ['cpc'], default_medium: 'cpc' }] },
     { rows: [] }
   ];
   const catalog = await loadSlackFormCatalog({
