@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildHelpResponse, buildPreviewResponse, buildModalPreviewView, buildUtmBuilderModal, parseSlashCommandText } from './slack.js';
+import { buildHelpResponse, buildPreviewResponse, buildModalPreviewView, buildUtmBuilderModal, loadSlackFormCatalog, parseSlashCommandText } from './slack.js';
 
 test('slash command parser reads key=value pairs', () => {
   assert.deepEqual(parseSlashCommandText('url=https://example.com source=Google medium=CPC campaign=Teste'), {
@@ -114,4 +114,22 @@ test('selected campaign fills utm_campaign like the web campaign flow', () => {
   });
 
   assert.match(view.blocks[1].text.text, /utm_campaign=campanha_cadastrada/);
+});
+
+test('catalog uses web builder fallback options when database options are empty', async () => {
+  const queries = [
+    { rows: [] },
+    { rows: [{ sources: ['google'], mediums: ['cpc'] }] },
+    { rows: [] }
+  ];
+  const catalog = await loadSlackFormCatalog({
+    query: async () => queries.shift()
+  });
+
+  assert.ok(catalog.optionsByCategory.action_type.some((option) => option.value === 'post_patrocinado'));
+  assert.ok(catalog.optionsByCategory.destination_type.some((option) => option.value === 'landing_page'));
+  assert.ok(catalog.optionsByCategory.ad_type.some((option) => option.value === 'image_ad'));
+  assert.ok(catalog.optionsByCategory.utm_term.some((option) => option.value === 'ec_canal'));
+  assert.ok(catalog.optionsByCategory.utm_content.some((option) => option.value === 'banner1'));
+  assert.ok(catalog.optionsByCategory.utm_id.some((option) => option.value === 'texto_01'));
 });

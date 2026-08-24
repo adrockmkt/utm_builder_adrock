@@ -13,6 +13,126 @@ const rawUrlEncodedParser = urlencoded({
   }
 });
 
+const FALLBACK_OPTIONS = {
+  action_type: choiceList(['post_patrocinado', 'banner_portal', 'newsletter', 'email_fluxo', 'paid_social', 'paid_search', 'parceria']),
+  destination_type: choiceList(['lp', 'landing_page', 'site', 'blog', 'whatsapp']),
+  ad_type: choiceList([
+    'whatsapp_canal',
+    'whatsapp_comunidade_socioemocional',
+    'whatsapp_comunidade_antirracista',
+    'whatsapp_comunidade_tecnologia',
+    'whatsapp_comunidade_metodologias_ativas',
+    'newsletter_semanal',
+    'newsletter_gestao',
+    'newsletter_comercial',
+    'instagram',
+    'facebook',
+    'linkedin',
+    'video',
+    'landing_page',
+    'infografico',
+    'materia',
+    'ebook',
+    'webstory',
+    'podcast',
+    'jogo',
+    'webinario',
+    'text_ad',
+    'image_ad',
+    'story_ad',
+    'lead_ad',
+    'video_ad',
+    'display_ad',
+    'shopping_ad'
+  ]),
+  utm_term: choiceList([
+    'ec_canal',
+    'ec_relacionamento',
+    'ec_grupo_ea',
+    'ec_facebook',
+    'ec_grupo_es',
+    'ec_grupo_crm',
+    'newsletter_premio',
+    'ec_aquisicao',
+    'email_58_trap_texto_d1',
+    'email_58_trap_texto_d2',
+    'coluna_debora_garofalo',
+    'abertura_inscricoes',
+    'agosto_datas',
+    'alfabetizacao_algoritmica',
+    'atualidades_curriculo',
+    'banner_premio_site',
+    'bncc_computacao1',
+    'dicas_escola',
+    'entrevista_gustavo_estanislau',
+    'formulario_premio',
+    'site_efemerides_agosto',
+    'site_porvir',
+    'stories_premio'
+  ]),
+  utm_content: choiceList([
+    'blog',
+    'materia',
+    'reportagem',
+    'artigo',
+    'agenda',
+    'gestao',
+    'biblioteca',
+    'glossario',
+    'festival',
+    'premio',
+    'video',
+    'link_bio',
+    'stories',
+    'reels',
+    'manychat',
+    'timeline',
+    'botao',
+    'feed',
+    'texto_abertura',
+    'destaque1',
+    'destaque2',
+    'miniatura1',
+    'miniatura2',
+    'miniatura3',
+    'aspas',
+    'dica_leitura1',
+    'dica_leitura2',
+    'story1',
+    'story2',
+    'story3',
+    'banner1',
+    'banner2',
+    'banner3',
+    'banner_parceiro',
+    'banner_abertura',
+    'botao1',
+    'botao2',
+    'canal',
+    'comunidade_socioemocional',
+    'comunidade_antirracista',
+    'comunidade_tecnologia',
+    'comunidade_metodologias_ativas'
+  ]),
+  utm_id: choiceList([
+    'curso_ed_antirracista_fundamentos',
+    'curso_ed_antirracista_praticas',
+    'material_rap_feminino',
+    'curso_comp_digitais_lp_em',
+    'lp_ebook_enem',
+    'texto_01',
+    'texto_02',
+    'img_01',
+    'img_02',
+    'botao_01',
+    'botao_02',
+    'banner_01',
+    'banner_02',
+    'catalogo',
+    'canal'
+  ])
+};
+
 router.post(
   '/commands',
   rawUrlEncodedParser,
@@ -104,6 +224,11 @@ export async function loadSlackFormCatalog(poolLike = pool) {
   for (const row of optionsResult.rows) {
     optionsByCategory[row.category] ||= [];
     optionsByCategory[row.category].push(toSlackChoice(row));
+  }
+  for (const [category, fallbackOptions] of Object.entries(FALLBACK_OPTIONS)) {
+    if (!optionsByCategory[category] || optionsByCategory[category].length === 0) {
+      optionsByCategory[category] = fallbackOptions;
+    }
   }
 
   return {
@@ -356,6 +481,10 @@ function uniqueChoices(values) {
     .sort((a, b) => a.localeCompare(b))
     .slice(0, 100)
     .map((value) => ({ label: value, value }));
+}
+
+function choiceList(values) {
+  return values.map((value) => ({ label: value, value }));
 }
 
 function toSlackChoice(row) {
