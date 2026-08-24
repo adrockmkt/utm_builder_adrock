@@ -1,5 +1,6 @@
 import { Router, urlencoded } from 'express';
 import { env } from '../config/env.js';
+import { pool } from '../db/pool.js';
 import { FEATURE_FLAGS, requireFeatureFlag } from '../services/featureFlags.js';
 import { requireSlackRequest } from '../services/slackSecurity.js';
 import { buildUtmUrl } from '../services/utmEngine.js';
@@ -24,7 +25,7 @@ router.post(
     if (Object.keys(values).length === 0) {
       if (env.slackBotToken && req.body?.trigger_id) {
         try {
-          await openSlackModal(buildUtmBuilderModal(req.body.trigger_id));
+          await openSlackModal(buildUtmBuilderModal(req.body.trigger_id, await loadSlackFormCatalog()));
           return res.status(200).send();
         } catch (error) {
           console.error('Failed to open Slack UTM modal', error);
@@ -75,7 +76,49 @@ export function parseSlashCommandText(text = '') {
   return values;
 }
 
-export function buildUtmBuilderModal(triggerId) {
+export async function loadSlackFormCatalog(poolLike = pool) {
+  const [optionsResult, presetsResult, campaignsResult] = await Promise.all([
+    poolLike.query(
+      `select category, value, label
+       from select_options
+       where is_active = true
+         and category in ('action_type', 'destination_type', 'ad_type', 'utm_term', 'utm_content', 'utm_id')
+       order by category, sort_order, label`
+    ),
+    poolLike.query(
+      `select sources, mediums
+       from utm_channel_presets
+       where is_active = true
+       order by sort_order, label`
+    ),
+    poolLike.query(
+      `select name, slug, client_name
+       from utm_campaigns
+       where type = 'campanha'
+       order by created_at desc
+       limit 100`
+    )
+  ]);
+
+  const optionsByCategory = {};
+  for (const row of optionsResult.rows) {
+    optionsByCategory[row.category] ||= [];
+    optionsByCategory[row.category].push(toSlackChoice(row));
+  }
+
+  return {
+    sources: uniqueChoices(presetsResult.rows.flatMap((row) => row.sources || [])),
+    mediums: uniqueChoices(presetsResult.rows.flatMap((row) => row.mediums || [])),
+    campaigns: campaignsResult.rows.map((row) => ({
+      label: row.client_name ? `${row.client_name} - ${row.name}` : row.name,
+      value: row.slug
+    })),
+    optionsByCategory
+  };
+}
+
+export function buildUtmBuilderModal(triggerId, catalog = {}) {
+  const optionsByCategory = catalog.optionsByCategory || {};
   return {
     trigger_id: triggerId,
     view: {
@@ -85,30 +128,24 @@ export function buildUtmBuilderModal(triggerId) {
       submit: plainText('Gerar preview'),
       close: plainText('Cancelar'),
       blocks: [
-        {
-          type: 'input',
-          block_id: 'context_type',
-          label: plainText('Contexto do link'),
-          element: {
-            type: 'static_select',
-            action_id: 'value',
-            initial_option: option('Link pontual', 'pontual'),
-            options: [
-              option('Link pontual', 'pontual'),
-              option('Campanha', 'campanha')
-            ]
-          }
-        },
+        staticSelectBlock('context_type', 'Contexto do link', [
+          { label: 'Link pontual', value: 'pontual' },
+          { label: 'Campanha', value: 'campanha' }
+        ]),
+        optionalStaticSelectBlock('campaign_select', 'Campanha cadastrada', catalog.campaigns || []),
         textInputBlock('base_url', 'URL Base', 'https://cliente.com/produto'),
-        textInputBlock('utm_source', 'Campaign Source (utm_source)', 'google'),
-        textInputBlock('utm_medium', 'Campaign Medium (utm_medium)', 'cpc'),
+        selectOrTextBlock('utm_source', 'Campaign Source (utm_source)', catalog.sources, 'google'),
+        selectOrTextBlock('utm_medium', 'Campaign Medium (utm_medium)', catalog.mediums, 'cpc'),
         textInputBlock('utm_campaign', 'utm_campaign', 'campanha_teste'),
-        textInputBlock('utm_term', 'utm_term / grupo de anúncio', 'remarketing_30d', true),
-        textInputBlock('utm_content', 'utm_content / peça', 'banner_home', true),
-        textInputBlock('utm_id', 'utm_id / identificador', 'criativo_01', true),
+        selectOrTextBlock('utm_term', 'utm_term / grupo de anúncio', optionsByCategory.utm_term, 'remarketing_30d', true),
+        selectOrTextBlock('utm_content', 'utm_content / peça', optionsByCategory.utm_content, 'banner_home', true),
+        selectOrTextBlock('utm_id', 'utm_id / identificador', optionsByCategory.utm_id, 'criativo_01', true),
         textInputBlock('internal_name', 'Nome interno do link', 'post_patrocinado_cliente', true),
+        optionalStaticSelectBlock('action_type', 'Tipo de ação', optionsByCategory.action_type || []),
+        optionalStaticSelectBlock('ad_type', 'Tipo de anúncio/formato', optionsByCategory.ad_type || []),
+        optionalStaticSelectBlock('destination_type', 'Destino', optionsByCategory.destination_type || []),
         textInputBlock('notes', 'Observações', 'Contexto operacional, placement, restrição...', true, true)
-      ]
+      ].filter(Boolean)
     }
   };
 }
@@ -119,7 +156,7 @@ export function buildModalPreviewView(view) {
     url: values.baseUrl,
     source: values.utmSource,
     medium: values.utmMedium,
-    campaign: values.utmCampaign,
+    campaign: values.selectedCampaignSlug || values.utmCampaign,
     term: values.utmTerm,
     content: values.utmContent,
     id: values.utmId
@@ -136,7 +173,11 @@ export function buildModalPreviewView(view) {
       markdownSection([
         '*Campos recebidos:*',
         `Tipo: ${values.contextType === 'campanha' ? 'Campanha' : 'Link pontual'}`,
+        `Campanha cadastrada: ${values.selectedCampaignSlug || 'não selecionada'}`,
         `Nome interno: ${values.internalName || 'não informado'}`,
+        `Tipo de ação: ${values.actionType || 'não selecionado'}`,
+        `Formato: ${values.adType || 'não selecionado'}`,
+        `Destino: ${values.destinationType || 'não selecionado'}`,
         `Observações: ${values.notes || 'sem observações'}`
       ].join('\n'))
     ]
@@ -214,6 +255,7 @@ async function openSlackModal(modal) {
 function extractModalValues(view) {
   return {
     contextType: readModalValue(view, 'context_type') || 'pontual',
+    selectedCampaignSlug: readModalValue(view, 'campaign_select'),
     baseUrl: readModalValue(view, 'base_url'),
     utmSource: readModalValue(view, 'utm_source'),
     utmMedium: readModalValue(view, 'utm_medium'),
@@ -222,6 +264,9 @@ function extractModalValues(view) {
     utmContent: readModalValue(view, 'utm_content'),
     utmId: readModalValue(view, 'utm_id'),
     internalName: readModalValue(view, 'internal_name'),
+    actionType: readModalValue(view, 'action_type'),
+    adType: readModalValue(view, 'ad_type'),
+    destinationType: readModalValue(view, 'destination_type'),
     notes: readModalValue(view, 'notes')
   };
 }
@@ -248,10 +293,44 @@ function textInputBlock(blockId, label, placeholder, optional = false, multiline
   };
 }
 
+function selectOrTextBlock(blockId, label, choices = [], placeholder, optional = false) {
+  if (!choices || choices.length === 0) {
+    return textInputBlock(blockId, label, placeholder, optional);
+  }
+
+  return staticSelectBlock(blockId, label, choices, optional);
+}
+
+function optionalStaticSelectBlock(blockId, label, choices = []) {
+  if (!choices || choices.length === 0) {
+    return null;
+  }
+
+  return staticSelectBlock(blockId, label, choices, true);
+}
+
+function staticSelectBlock(blockId, label, choices, optional = false) {
+  const normalizedOptions = choices.slice(0, 100).map((choice) => option(choice.label, choice.value));
+
+  return {
+    type: 'input',
+    block_id: blockId,
+    optional,
+    label: plainText(label),
+    element: {
+      type: 'static_select',
+      action_id: 'value',
+      placeholder: plainText('Selecione'),
+      options: normalizedOptions,
+      ...(optional ? {} : { initial_option: normalizedOptions[0] })
+    }
+  };
+}
+
 function option(text, value) {
   return {
-    text: plainText(text),
-    value
+    text: plainText(truncateSlackText(text, 75)),
+    value: truncateSlackText(value, 75)
   };
 }
 
@@ -270,6 +349,25 @@ function markdownSection(text) {
       text
     }
   };
+}
+
+function uniqueChoices(values) {
+  return Array.from(new Set(values.filter(Boolean).map((value) => String(value).trim()).filter(Boolean)))
+    .sort((a, b) => a.localeCompare(b))
+    .slice(0, 100)
+    .map((value) => ({ label: value, value }));
+}
+
+function toSlackChoice(row) {
+  return {
+    label: row.label || row.value,
+    value: row.value
+  };
+}
+
+function truncateSlackText(value, maxLength) {
+  const text = String(value || '');
+  return text.length <= maxLength ? text : text.slice(0, maxLength);
 }
 
 function requireAllowedTeam(req, res, next) {

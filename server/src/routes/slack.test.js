@@ -28,13 +28,26 @@ test('preview response uses canonical engine', () => {
 });
 
 test('utm builder modal asks for the same core web builder fields', () => {
-  const modal = buildUtmBuilderModal('T123').view;
+  const modal = buildUtmBuilderModal('T123', {
+    sources: [{ label: 'Google', value: 'google' }],
+    mediums: [{ label: 'CPC', value: 'cpc' }],
+    campaigns: [{ label: 'Cliente - Campanha Teste', value: 'campanha_teste' }],
+    optionsByCategory: {
+      action_type: [{ label: 'Newsletter', value: 'newsletter' }],
+      destination_type: [{ label: 'Landing page', value: 'landing_page' }],
+      ad_type: [{ label: 'Banner', value: 'banner' }],
+      utm_term: [{ label: 'Remarketing', value: 'remarketing' }],
+      utm_content: [{ label: 'Banner Home', value: 'banner_home' }],
+      utm_id: [{ label: 'Criativo 01', value: 'criativo_01' }]
+    }
+  }).view;
   const blockIds = modal.blocks.map((block) => block.block_id).filter(Boolean);
 
   assert.equal(modal.type, 'modal');
   assert.equal(modal.callback_id, 'utm_builder_modal');
   assert.deepEqual(blockIds, [
     'context_type',
+    'campaign_select',
     'base_url',
     'utm_source',
     'utm_medium',
@@ -43,8 +56,13 @@ test('utm builder modal asks for the same core web builder fields', () => {
     'utm_content',
     'utm_id',
     'internal_name',
+    'action_type',
+    'ad_type',
+    'destination_type',
     'notes'
   ]);
+  assert.equal(modal.blocks.find((block) => block.block_id === 'utm_source').element.type, 'static_select');
+  assert.equal(modal.blocks.find((block) => block.block_id === 'action_type').element.type, 'static_select');
 });
 
 test('modal submission builds preview from entered answers', () => {
@@ -52,14 +70,18 @@ test('modal submission builds preview from entered answers', () => {
     state: {
       values: {
         context_type: { value: { selected_option: { value: 'pontual' } } },
+        campaign_select: { value: { selected_option: null } },
         base_url: { value: { value: 'https://example.com/lp' } },
-        utm_source: { value: { value: 'Google' } },
-        utm_medium: { value: { value: 'CPC' } },
+        utm_source: { value: { selected_option: { value: 'Google' } } },
+        utm_medium: { value: { selected_option: { value: 'CPC' } } },
         utm_campaign: { value: { value: 'Campanha Teste' } },
         utm_term: { value: { value: '' } },
-        utm_content: { value: { value: 'Banner Home' } },
-        utm_id: { value: { value: 'Criativo 01' } },
+        utm_content: { value: { selected_option: { value: 'Banner Home' } } },
+        utm_id: { value: { selected_option: { value: 'Criativo 01' } } },
         internal_name: { value: { value: 'link_teste' } },
+        action_type: { value: { selected_option: { value: 'newsletter' } } },
+        ad_type: { value: { selected_option: { value: 'banner' } } },
+        destination_type: { value: { selected_option: { value: 'landing_page' } } },
         notes: { value: { value: '' } }
       }
     }
@@ -70,4 +92,26 @@ test('modal submission builds preview from entered answers', () => {
   assert.match(view.blocks[0].text.text, /Preview de URL UTM/);
   assert.match(view.blocks[1].text.text, /utm_source=google/);
   assert.match(view.blocks[1].text.text, /utm_content=banner_home/);
+});
+
+test('selected campaign fills utm_campaign like the web campaign flow', () => {
+  const view = buildModalPreviewView({
+    state: {
+      values: {
+        context_type: { value: { selected_option: { value: 'campanha' } } },
+        campaign_select: { value: { selected_option: { value: 'campanha_cadastrada' } } },
+        base_url: { value: { value: 'https://example.com/lp' } },
+        utm_source: { value: { selected_option: { value: 'instagram' } } },
+        utm_medium: { value: { selected_option: { value: 'paid_social' } } },
+        utm_campaign: { value: { value: '' } },
+        utm_term: { value: { selected_option: { value: 'grupo_a' } } },
+        utm_content: { value: { selected_option: { value: 'story1' } } },
+        utm_id: { value: { selected_option: { value: 'img_01' } } },
+        internal_name: { value: { value: 'link_teste' } },
+        notes: { value: { value: '' } }
+      }
+    }
+  });
+
+  assert.match(view.blocks[1].text.text, /utm_campaign=campanha_cadastrada/);
 });
