@@ -17,6 +17,7 @@ export const env = {
   bitlyGroupGuid: process.env.BITLY_GROUP_GUID || '',
   bitlyDomain: process.env.BITLY_DOMAIN || 'bit.ly',
   slackSigningSecret: process.env.SLACK_SIGNING_SECRET || '',
+  slackBotToken: process.env.SLACK_BOT_TOKEN || '',
   slackAllowedTeamId: process.env.SLACK_ALLOWED_TEAM_ID || ''
 };
 
