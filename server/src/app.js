@@ -11,6 +11,7 @@ import documentRoutes from './routes/documents.js';
 import exportRoutes from './routes/exports.js';
 import healthRoutes from './routes/health.js';
 import settingsRoutes from './routes/settings.js';
+import slackRoutes from './routes/slack.js';
 import userRoutes from './routes/users.js';
 import utmCampaignRoutes from './routes/utmCampaigns.js';
 import utmLinkRoutes from './routes/utmLinks.js';
@@ -39,6 +40,7 @@ app.get('/', (_req, res) => {
 
 app.use('/api/health', healthRoutes);
 app.use('/api/settings', settingsRoutes);
+app.use('/api/slack', slackRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/utm-campaigns', utmCampaignRoutes);

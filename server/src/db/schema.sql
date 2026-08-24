@@ -359,3 +359,7 @@ on conflict (key) do nothing;
 insert into app_settings (key, value)
 values ('app_name', 'Ad Rock UTM Builder')
 on conflict (key) do nothing;
+
+insert into app_settings (key, value)
+values ('slack_integration_enabled', 'false')
+on conflict (key) do nothing;

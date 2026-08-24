@@ -15,7 +15,9 @@ export const env = {
   bitlyEnabled: process.env.BITLY_ENABLED === 'true',
   bitlyAccessToken: process.env.BITLY_ACCESS_TOKEN || '',
   bitlyGroupGuid: process.env.BITLY_GROUP_GUID || '',
-  bitlyDomain: process.env.BITLY_DOMAIN || 'bit.ly'
+  bitlyDomain: process.env.BITLY_DOMAIN || 'bit.ly',
+  slackSigningSecret: process.env.SLACK_SIGNING_SECRET || '',
+  slackAllowedTeamId: process.env.SLACK_ALLOWED_TEAM_ID || ''
 };
 
 if (env.nodeEnv === 'production') {
