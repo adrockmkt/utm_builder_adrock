@@ -1,4 +1,6 @@
-export function getBulkImportTutorialSteps() {
+export function getBulkImportTutorialSteps(options = {}) {
+  const hasSelectedCampaign = Boolean(options.hasSelectedCampaign);
+
   return [
     {
       title: '1. Modelo',
@@ -8,7 +10,9 @@ export function getBulkImportTutorialSteps() {
     {
       title: '2. Upload',
       description: 'A validação roda antes do salvamento.',
-      action: 'upload'
+      action: 'upload',
+      highlight: hasSelectedCampaign,
+      readyMessage: hasSelectedCampaign ? '🙂 Beleza, siga com a subida do arquivo.' : ''
     }
   ];
 }

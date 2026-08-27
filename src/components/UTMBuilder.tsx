@@ -1331,7 +1331,8 @@ function BulkImportPanel({
   onSave: () => void;
 }) {
   const previewRows = validation?.rows.slice(0, 12) || [];
-  const tutorialSteps = getBulkImportTutorialSteps();
+  const tutorialSteps = getBulkImportTutorialSteps({ hasSelectedCampaign: Boolean(selectedCampaignId) });
+  const uploadStep = tutorialSteps[1];
 
   return (
     <div className="space-y-4 rounded-2xl border border-[#c1d6e9] bg-white p-4">
@@ -1351,10 +1352,13 @@ function BulkImportPanel({
             Baixar XLSX
           </button>
         </div>
-        <div className="rounded-2xl border border-[#d9e7f4] bg-[#f8fbff] p-3">
-          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-gray-500">{tutorialSteps[1].title}</p>
-          <p className="mt-2 text-sm text-gray-700">{tutorialSteps[1].description}</p>
-          <label className={`mt-3 inline-flex cursor-pointer items-center rounded-xl border px-3 py-2 text-sm font-medium ${selectedCampaignId ? 'border-[#c1d6e9] bg-white text-gray-700' : 'border-gray-200 bg-gray-100 text-gray-400'}`}>
+        <div className={`rounded-2xl border p-3 ${uploadStep.highlight ? 'border-[#ff940e] bg-[#fff1db]' : 'border-[#d9e7f4] bg-[#f8fbff]'}`}>
+          <p className={`text-xs font-semibold uppercase tracking-[0.16em] ${uploadStep.highlight ? 'text-[#9a4a00]' : 'text-gray-500'}`}>{uploadStep.title}</p>
+          <p className="mt-2 text-sm text-gray-700">{uploadStep.description}</p>
+          {uploadStep.readyMessage && (
+            <p className="mt-2 text-sm font-semibold text-[#9a4a00]">{uploadStep.readyMessage}</p>
+          )}
+          <label className={`mt-3 inline-flex cursor-pointer items-center rounded-xl border px-3 py-2 text-sm font-semibold ${selectedCampaignId ? 'border-[#ff940e] bg-[#ff940e] text-white shadow-sm shadow-orange-200' : 'border-gray-200 bg-gray-100 text-gray-400'}`}>
             <Upload className="mr-2 h-4 w-4" />
             Subir XLSX
             <input
