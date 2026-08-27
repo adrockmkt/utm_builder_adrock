@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { CheckCircle, ChevronDown, ChevronUp, Copy, Info, Link2, Save, Search, Sparkles, XCircle } from 'lucide-react';
+import { CheckCircle, ChevronDown, ChevronUp, Copy, Download, Info, Link2, Save, Search, Sparkles, Upload, XCircle } from 'lucide-react';
+import { sortAlphabeticallyByLabel, sortSuggestionGroups } from '../utils/alphabeticalOptions.js';
 import { buildGeneratedUrl, CHANNEL_PRESETS, CHANNEL_RULES, type ChannelPreset, type UTMParams, UTM_FIELD_GUIDES, inferPresetFromValues, normalizeUtmDraftValue, normalizeUtmValue, validateUrlString, validateUtmParams } from '../utils/utm';
-import type { CampaignRecord, ChannelPresetRecord, SaveLinkPayload, SelectOptionRecord } from '../types';
+import type { BulkLinkValidationResult, CampaignRecord, ChannelPresetRecord, SaveLinkPayload, SelectOptionRecord } from '../types';
 
 const emptyParams: UTMParams = {
   url: '',
@@ -72,6 +73,9 @@ interface UTMBuilderProps {
   utmIdOptions?: SelectOptionRecord[];
   onCreateCampaignRequest?: () => void;
   onSaveLink?: (payload: SaveLinkPayload) => Promise<void>;
+  onDownloadBulkTemplate?: () => Promise<void>;
+  onValidateBulkLinks?: (payload: { campaignId: string; file: File }) => Promise<BulkLinkValidationResult>;
+  onSaveBulkLinks?: (payload: { campaignId: string; file: File }) => Promise<{ createdCount: number; validation: BulkLinkValidationResult }>;
   isSaving?: boolean;
 }
 
@@ -311,6 +315,9 @@ const UTMBuilder: React.FC<UTMBuilderProps> = ({
   utmIdOptions = [],
   onCreateCampaignRequest,
   onSaveLink,
+  onDownloadBulkTemplate,
+  onValidateBulkLinks,
+  onSaveBulkLinks,
   isSaving = false
 }) => {
   const activeChannelPresets = channelPresets.filter((preset) => preset.isActive !== false);
@@ -352,8 +359,12 @@ const UTMBuilder: React.FC<UTMBuilderProps> = ({
   const [generatedURL, setGeneratedURL] = useState('');
   const [urlToValidate, setUrlToValidate] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
-  const [contextType, setContextType] = useState<'pontual' | 'campanha'>('pontual');
+  const [contextType, setContextType] = useState<'pontual' | 'campanha' | 'lote'>('pontual');
   const [selectedCampaignId, setSelectedCampaignId] = useState('');
+  const [bulkFile, setBulkFile] = useState<File | null>(null);
+  const [bulkValidation, setBulkValidation] = useState<BulkLinkValidationResult | null>(null);
+  const [bulkStatus, setBulkStatus] = useState('');
+  const [isBulkProcessing, setIsBulkProcessing] = useState(false);
   const [adGroupName, setAdGroupName] = useState('');
   const [adType, setAdType] = useState(resolvedAdTypeOptions[0].value);
   const [internalName, setInternalName] = useState('');
@@ -405,6 +416,9 @@ const UTMBuilder: React.FC<UTMBuilderProps> = ({
     setGeneratedURL('');
     setContextType('pontual');
     setSelectedCampaignId('');
+    setBulkFile(null);
+    setBulkValidation(null);
+    setBulkStatus('');
     setAdGroupName('');
     setAdType(resolvedAdTypeOptions[0].value);
     setInternalName('');
@@ -507,8 +521,56 @@ const UTMBuilder: React.FC<UTMBuilderProps> = ({
     resetBuilderForm();
   };
 
+  const handleBulkFileChange = async (file: File | null) => {
+    setBulkFile(file);
+    setBulkValidation(null);
+    setBulkStatus('');
+
+    if (!file || !onValidateBulkLinks) return;
+    if (!selectedCampaignId) {
+      setBulkStatus('Selecione uma campanha cadastrada antes de validar a planilha.');
+      return;
+    }
+    if (!file.name.toLowerCase().endsWith('.xlsx')) {
+      setBulkStatus('Envie uma planilha no formato .xlsx.');
+      return;
+    }
+
+    setIsBulkProcessing(true);
+    try {
+      const validation = await onValidateBulkLinks({ campaignId: selectedCampaignId, file });
+      setBulkValidation(validation);
+      setBulkStatus(validation.canSave ? 'Planilha validada. Revise a prévia e salve o lote.' : 'Corrija os erros na planilha e suba novamente.');
+    } catch (error) {
+      setBulkStatus(error instanceof Error ? error.message : 'Não foi possível validar a planilha.');
+    } finally {
+      setIsBulkProcessing(false);
+    }
+  };
+
+  const handleSaveBulkLinks = async () => {
+    if (!bulkFile || !selectedCampaignId || !onSaveBulkLinks) return;
+    if (!bulkValidation?.canSave) {
+      alert('Corrija os erros antes de salvar o lote.');
+      return;
+    }
+
+    setIsBulkProcessing(true);
+    try {
+      const result = await onSaveBulkLinks({ campaignId: selectedCampaignId, file: bulkFile });
+      setBulkValidation(result.validation);
+      setBulkStatus(`${result.createdCount} links salvos com sucesso.`);
+      setBulkFile(null);
+    } catch (error) {
+      setBulkStatus(error instanceof Error ? error.message : 'Não foi possível salvar o lote.');
+    } finally {
+      setIsBulkProcessing(false);
+    }
+  };
+
   const isExternalActionsPreset = selectedPresetId === 'external-actions';
-  const relatedCampaignOptions = campaigns.filter((campaign) => campaign.type === contextType);
+  const relatedCampaignType = contextType === 'lote' ? 'campanha' : contextType;
+  const relatedCampaignOptions = sortAlphabeticallyByLabel(campaigns.filter((campaign) => campaign.type === relatedCampaignType)) as CampaignRecord[];
   const liveChecks = [
     {
       label: 'URL base',
@@ -567,6 +629,8 @@ const UTMBuilder: React.FC<UTMBuilderProps> = ({
 
   const handleCampaignChange = (campaignId: string) => {
     setSelectedCampaignId(campaignId);
+    setBulkValidation(null);
+    setBulkStatus('');
     const campaign = campaigns.find((item) => item.id === campaignId);
     if (campaign) {
       handleParamChange('campaign', campaign.slug);
@@ -686,7 +750,7 @@ const UTMBuilder: React.FC<UTMBuilderProps> = ({
 
         <div className="p-6">
           {activeTab === 'builder' && (
-            <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_380px]">
+            <div className={`grid items-start gap-6 ${contextType === 'lote' ? '' : 'xl:grid-cols-[minmax(0,1fr)_380px]'}`}>
               <div className="space-y-6">
                 {isExternalActionsPreset && (
                   <div className="rounded-2xl border border-[#ffcf92] bg-[#fff5e8] p-4">
@@ -698,10 +762,11 @@ const UTMBuilder: React.FC<UTMBuilderProps> = ({
                 <div className="rounded-2xl border border-[#c1d6e9] bg-[#f8fbff] p-4">
                   <h3 className="text-lg font-medium text-gray-900">Contexto do link</h3>
                   <p className="mt-1 text-sm text-gray-600">Escolha se este link é pontual ou se deve nascer ligado a uma governança de campanha.</p>
-                  <div className="mt-4 grid gap-3 md:grid-cols-2">
+                  <div className="mt-4 grid gap-3 md:grid-cols-3">
                     {[
                       { value: 'pontual', label: 'Link pontual' },
-                      { value: 'campanha', label: 'Campanha' }
+                      { value: 'campanha', label: 'Campanha' },
+                      { value: 'lote', label: 'Lote de campanha' }
                     ].map((option) => (
                       <button
                         key={option.value}
@@ -710,6 +775,9 @@ const UTMBuilder: React.FC<UTMBuilderProps> = ({
                           setContextType(option.value as typeof contextType);
                           setSelectedCampaignId('');
                           setAdGroupName('');
+                          setBulkFile(null);
+                          setBulkValidation(null);
+                          setBulkStatus('');
                         }}
                         className={`rounded-2xl border px-4 py-3 text-left text-sm ${
                           contextType === option.value
@@ -726,7 +794,9 @@ const UTMBuilder: React.FC<UTMBuilderProps> = ({
                       <div className="rounded-2xl border border-[#ffcf92] bg-[#fff8ef] p-4">
                         <h4 className="font-semibold text-gray-900">Você já criou a campanha?</h4>
                         <p className="mt-1 text-sm text-gray-700">
-                          Para link por campanha, primeiro selecione uma campanha já cadastrada. Se ela ainda não existe, cadastre na aba Campanhas e volte para gerar os UTMs.
+                          {contextType === 'lote'
+                            ? 'Para gerar links em lote, selecione uma campanha já cadastrada. O sistema usará o slug dela como utm_campaign em todas as linhas.'
+                            : 'Para link por campanha, primeiro selecione uma campanha já cadastrada. Se ela ainda não existe, cadastre na aba Campanhas e volte para gerar os UTMs.'}
                         </p>
                         <div className="mt-3 flex flex-wrap gap-2">
                           {onCreateCampaignRequest && (
@@ -759,17 +829,32 @@ const UTMBuilder: React.FC<UTMBuilderProps> = ({
                           </p>
                         )}
                       </div>
-                      <div>
+                      {contextType !== 'lote' && (
                         <div>
                           <label className="adrock-field-label mb-1 block text-sm font-medium">Grupo de anúncio</label>
                           <input type="text" value={adGroupName} onChange={(e) => handleAdGroupChange(e.target.value)} className="w-full px-3 py-2" placeholder="ex: remarketing_30d" />
                           <p className="mt-2 text-xs text-gray-600">Preenche o utm_term.</p>
                         </div>
-                      </div>
+                      )}
+                      {contextType === 'lote' && (
+                        <BulkImportPanel
+                          selectedCampaignId={selectedCampaignId}
+                          file={bulkFile}
+                          validation={bulkValidation}
+                          status={bulkStatus}
+                          isProcessing={isBulkProcessing}
+                          onCreateCampaignRequest={onCreateCampaignRequest}
+                          onDownloadTemplate={onDownloadBulkTemplate}
+                          onFileChange={handleBulkFileChange}
+                          onSave={handleSaveBulkLinks}
+                        />
+                      )}
                     </div>
                   )}
                 </div>
 
+              {contextType !== 'lote' && (
+                <>
               <div className="rounded-2xl border border-[#c1d6e9] bg-white p-4">
                 <h3 className="text-lg font-medium text-gray-900">Carregar URL já parametrizada</h3>
                 <p className="mt-1 text-sm text-gray-600">
@@ -934,8 +1019,11 @@ const UTMBuilder: React.FC<UTMBuilderProps> = ({
                   <p className="break-all text-sm leading-relaxed text-gray-800">{generatedURL}</p>
                 </div>
               )}
+                </>
+              )}
               </div>
 
+              {contextType !== 'lote' && (
               <aside className="space-y-4 xl:sticky xl:top-6">
                 <div className="rounded-2xl border border-red-200 bg-red-50 p-4">
                   <h4 className="font-semibold text-red-900">Erros</h4>
@@ -984,6 +1072,7 @@ const UTMBuilder: React.FC<UTMBuilderProps> = ({
                   </div>
                 </div>
               </aside>
+              )}
             </div>
           )}
 
@@ -1038,6 +1127,136 @@ const UTMBuilder: React.FC<UTMBuilderProps> = ({
     </div>
   );
 };
+
+function BulkImportPanel({
+  selectedCampaignId,
+  file,
+  validation,
+  status,
+  isProcessing,
+  onCreateCampaignRequest,
+  onDownloadTemplate,
+  onFileChange,
+  onSave
+}: {
+  selectedCampaignId: string;
+  file: File | null;
+  validation: BulkLinkValidationResult | null;
+  status: string;
+  isProcessing: boolean;
+  onCreateCampaignRequest?: () => void;
+  onDownloadTemplate?: () => Promise<void>;
+  onFileChange: (file: File | null) => void;
+  onSave: () => void;
+}) {
+  const previewRows = validation?.rows.slice(0, 12) || [];
+
+  return (
+    <div className="space-y-4 rounded-2xl border border-[#c1d6e9] bg-white p-4">
+      <div>
+        <h4 className="font-semibold text-gray-900">Tracking em lote</h4>
+        <p className="mt-1 text-sm text-gray-700">
+          Baixe o modelo oficial, preencha uma linha por link e suba o XLSX. Se aparecer erro, corrija a planilha e envie novamente. Avisos podem ser aceitos.
+        </p>
+      </div>
+
+      <div className="grid gap-3 md:grid-cols-3">
+        <div className="rounded-2xl border border-[#d9e7f4] bg-[#f8fbff] p-3">
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-gray-500">1. Campanha</p>
+          <p className="mt-2 text-sm text-gray-700">Selecione ou crie a campanha antes do upload.</p>
+          {onCreateCampaignRequest && (
+            <button type="button" onClick={onCreateCampaignRequest} className="mt-3 rounded-xl border border-[#ff940e] bg-white px-3 py-2 text-sm font-medium text-[#9a4a00]">
+              Cadastrar campanha
+            </button>
+          )}
+        </div>
+        <div className="rounded-2xl border border-[#d9e7f4] bg-[#f8fbff] p-3">
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-gray-500">2. Modelo</p>
+          <p className="mt-2 text-sm text-gray-700">Use sempre o XLSX do sistema para incluir todos os campos obrigatórios.</p>
+          <button type="button" onClick={onDownloadTemplate} disabled={!onDownloadTemplate} className="mt-3 inline-flex items-center rounded-xl border border-[#c1d6e9] bg-white px-3 py-2 text-sm font-medium text-gray-700 disabled:opacity-50">
+            <Download className="mr-2 h-4 w-4" />
+            Baixar XLSX
+          </button>
+        </div>
+        <div className="rounded-2xl border border-[#d9e7f4] bg-[#f8fbff] p-3">
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-gray-500">3. Upload</p>
+          <p className="mt-2 text-sm text-gray-700">A validação roda antes do salvamento.</p>
+          <label className={`mt-3 inline-flex cursor-pointer items-center rounded-xl border px-3 py-2 text-sm font-medium ${selectedCampaignId ? 'border-[#c1d6e9] bg-white text-gray-700' : 'border-gray-200 bg-gray-100 text-gray-400'}`}>
+            <Upload className="mr-2 h-4 w-4" />
+            Subir XLSX
+            <input
+              type="file"
+              accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+              disabled={!selectedCampaignId || isProcessing}
+              onChange={(event) => {
+                onFileChange(event.target.files?.[0] || null);
+                event.currentTarget.value = '';
+              }}
+              className="sr-only"
+            />
+          </label>
+        </div>
+      </div>
+
+      {file && (
+        <p className="text-sm text-gray-600">Arquivo selecionado: <strong>{file.name}</strong></p>
+      )}
+      {status && (
+        <p className={`rounded-xl border px-3 py-2 text-sm ${validation?.canSave ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-yellow-200 bg-yellow-50 text-yellow-900'}`}>
+          {isProcessing ? 'Processando planilha...' : status}
+        </p>
+      )}
+      {validation && (
+        <div className="space-y-3">
+          <div className="grid gap-2 text-sm md:grid-cols-4">
+            <span className="rounded-xl bg-gray-100 px-3 py-2">Linhas: <strong>{validation.summary.totalRows}</strong></span>
+            <span className="rounded-xl bg-emerald-50 px-3 py-2 text-emerald-800">OK: <strong>{validation.summary.okRows}</strong></span>
+            <span className="rounded-xl bg-yellow-50 px-3 py-2 text-yellow-900">Avisos: <strong>{validation.summary.warningRows}</strong></span>
+            <span className="rounded-xl bg-red-50 px-3 py-2 text-red-800">Erros: <strong>{validation.summary.errorRows}</strong></span>
+          </div>
+          <div className="max-h-72 overflow-auto rounded-2xl border border-[#d9e7f4]">
+            <table className="min-w-full divide-y divide-[#d9e7f4] text-left text-xs">
+              <thead className="bg-[#f4f8fc] text-gray-600">
+                <tr>
+                  <th className="px-3 py-2">Linha</th>
+                  <th className="px-3 py-2">Status</th>
+                  <th className="px-3 py-2">Nome interno</th>
+                  <th className="px-3 py-2">URL final</th>
+                  <th className="px-3 py-2">Mensagens</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[#edf3f9] bg-white">
+                {previewRows.map((row) => (
+                  <tr key={row.rowNumber}>
+                    <td className="px-3 py-2 font-mono">{row.rowNumber}</td>
+                    <td className="px-3 py-2 font-semibold">{row.status}</td>
+                    <td className="px-3 py-2">{row.normalized.internalName || '-'}</td>
+                    <td className="max-w-[20rem] break-all px-3 py-2">{row.normalized.finalUrl || '-'}</td>
+                    <td className="min-w-[16rem] px-3 py-2">
+                      {[...row.errors, ...row.warnings].join(' | ') || 'Sem mensagens.'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {validation.rows.length > previewRows.length && (
+            <p className="text-xs text-gray-500">Prévia exibindo as primeiras {previewRows.length} linhas de {validation.rows.length}.</p>
+          )}
+          <button
+            type="button"
+            onClick={onSave}
+            disabled={!validation.canSave || isProcessing}
+            className="inline-flex items-center rounded-2xl border border-[#ff940e] px-6 py-3 font-semibold text-[#ff940e] disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <Save className="mr-2 h-4 w-4" />
+            {isProcessing ? 'Salvando lote...' : 'Salvar lote'}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
 
 function SuggestionBox({
   groups,

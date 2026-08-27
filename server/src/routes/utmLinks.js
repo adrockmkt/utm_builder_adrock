@@ -1,8 +1,10 @@
 import { Router } from 'express';
+import ExcelJS from 'exceljs';
 import { pool } from '../db/pool.js';
 import { requireAuth } from '../middleware/auth.js';
 import { logAudit } from '../utils/audit.js';
 import { createBitlyLink, normalizeBackHalf, updateBitlyDestination } from '../utils/bitly.js';
+import { buildBulkTemplateRows, getBulkTemplateColumns, normalizeWorksheetRows, validateBulkUtmRows } from '../utils/bulkUtmImport.js';
 import { generateId } from '../utils/security.js';
 
 const router = Router();
@@ -20,6 +22,125 @@ router.get('/', async (_req, res) => {
   );
 
   res.json(result.rows);
+});
+
+router.get('/bulk-template.xlsx', async (_req, res) => {
+  const workbook = new ExcelJS.Workbook();
+  workbook.creator = 'Ad Rock UTM Builder';
+  workbook.created = new Date();
+
+  const instructions = workbook.addWorksheet('Instruções');
+  instructions.columns = [{ width: 32 }, { width: 110 }];
+  instructions.addRows([
+    ['Como usar', 'Crie ou selecione uma campanha no sistema antes de subir o lote. O utm_campaign da planilha é ignorado e o sistema usa o slug da campanha selecionada.'],
+    ['Correção de erros', 'Se a validação apontar erro, corrija a planilha e suba novamente. Avisos podem ser aceitos.'],
+    ['Campos obrigatórios', 'Nome interno, Link original, Source, Medium, Tipo de ação, Destino e Tipo de anúncio/formato.'],
+    ['Campos opcionais', 'Term, Content, ID, Grupo de anúncio e Observações.']
+  ]);
+  instructions.getRow(1).font = { bold: true };
+
+  const model = workbook.addWorksheet('Modelo');
+  const columns = getBulkTemplateColumns();
+  model.columns = columns.map((header) => ({ header, key: header, width: Math.max(18, header.length + 4) }));
+  model.addRows(buildBulkTemplateRows());
+  model.getRow(1).font = { bold: true };
+  model.views = [{ state: 'frozen', ySplit: 1 }];
+
+  const buffer = await workbook.xlsx.writeBuffer();
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.setHeader('Content-Disposition', 'attachment; filename="modelo-utm-lote.xlsx"');
+  res.send(Buffer.from(buffer));
+});
+
+router.post('/bulk/validate', async (req, res) => {
+  const { campaignId, fileDataBase64 } = req.body || {};
+  const campaign = await findCampaign(campaignId);
+  let rows;
+  try {
+    rows = await parseWorkbookRows(fileDataBase64);
+  } catch {
+    return res.status(400).json({ error: 'Não foi possível ler o XLSX. Baixe o modelo oficial, preencha novamente e suba a planilha.' });
+  }
+  const existingFinalUrls = await listExistingFinalUrls();
+  const validation = validateBulkUtmRows({ campaign, rows, existingFinalUrls });
+
+  res.json(validation);
+});
+
+router.post('/bulk', async (req, res) => {
+  const { campaignId, fileName, fileDataBase64 } = req.body || {};
+  const campaign = await findCampaign(campaignId);
+  let rows;
+  try {
+    rows = await parseWorkbookRows(fileDataBase64);
+  } catch {
+    return res.status(400).json({ error: 'Não foi possível ler o XLSX. Baixe o modelo oficial, preencha novamente e suba a planilha.' });
+  }
+  const existingFinalUrls = await listExistingFinalUrls();
+  const validation = validateBulkUtmRows({ campaign, rows, existingFinalUrls });
+
+  if (!validation.canSave) {
+    return res.status(400).json({ error: 'Corrija os erros da planilha antes de salvar o lote.', validation });
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('begin');
+    const insertedIds = [];
+
+    for (const row of validation.rows) {
+      const id = generateId();
+      const item = row.normalized;
+      await client.query(
+        `insert into utm_links
+          (id, campaign_id, base_url, utm_source, utm_medium, utm_campaign, utm_term, utm_content, utm_id, final_url, internal_name, action_type, destination_type, ad_group_name, ad_type, notes, created_by, last_validated_at)
+         values
+          ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, now())`,
+        [
+          id,
+          item.campaignId,
+          item.baseUrl,
+          item.utmSource,
+          item.utmMedium,
+          item.utmCampaign,
+          item.utmTerm || null,
+          item.utmContent || null,
+          item.utmId || null,
+          item.finalUrl,
+          item.internalName,
+          item.actionType,
+          item.destinationType,
+          item.adGroupName || null,
+          item.adType,
+          item.notes || null,
+          req.auth.user.id
+        ]
+      );
+      insertedIds.push(id);
+    }
+
+    await client.query('commit');
+    await logAudit({
+      req,
+      action: 'bulk_links_created',
+      entityType: 'utm_link',
+      entityId: campaign?.id || null,
+      metadata: {
+        campaignId: campaign?.id || null,
+        campaignSlug: campaign?.slug || null,
+        fileName: fileName || null,
+        createdCount: insertedIds.length,
+        warningRows: validation.summary.warningRows
+      }
+    });
+
+    res.status(201).json({ success: true, createdCount: insertedIds.length, ids: insertedIds, validation });
+  } catch (error) {
+    await client.query('rollback');
+    throw error;
+  } finally {
+    client.release();
+  }
 });
 
 router.post('/', async (req, res) => {
@@ -310,4 +431,50 @@ export default router;
 
 function hasOwn(object, key) {
   return Object.prototype.hasOwnProperty.call(object, key);
+}
+
+async function findCampaign(campaignId) {
+  if (!campaignId) return null;
+  const result = await pool.query('select id, name, slug from utm_campaigns where id = $1', [campaignId]);
+  return result.rows[0] || null;
+}
+
+async function listExistingFinalUrls() {
+  const result = await pool.query('select final_url from utm_links');
+  return result.rows.map((row) => row.final_url);
+}
+
+async function parseWorkbookRows(fileDataBase64) {
+  if (!fileDataBase64) {
+    return [];
+  }
+
+  const workbook = new ExcelJS.Workbook();
+  const buffer = Buffer.from(String(fileDataBase64), 'base64');
+  await workbook.xlsx.load(buffer);
+  const worksheet = workbook.worksheets[0];
+  if (!worksheet) return [];
+
+  const table = [];
+  worksheet.eachRow({ includeEmpty: false }, (row) => {
+    const values = [];
+    row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
+      values[colNumber - 1] = getCellText(cell);
+    });
+    table.push(values);
+  });
+
+  return normalizeWorksheetRows(table);
+}
+
+function getCellText(cell) {
+  if (cell.value === null || cell.value === undefined) return '';
+  if (cell.value instanceof Date) return cell.value.toISOString().slice(0, 10);
+  if (typeof cell.value === 'object') {
+    if ('hyperlink' in cell.value) return String(cell.value.hyperlink || cell.value.text || '');
+    if ('text' in cell.value) return String(cell.value.text || '');
+    if ('result' in cell.value) return String(cell.value.result || '');
+    if ('richText' in cell.value) return cell.value.richText.map((part) => part.text).join('');
+  }
+  return String(cell.value);
 }

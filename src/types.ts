@@ -113,6 +113,26 @@ export interface SaveLinkPayload {
   notes?: string;
 }
 
+export interface BulkLinkValidationRow {
+  rowNumber: number;
+  raw: Record<string, unknown>;
+  normalized: SaveLinkPayload;
+  errors: string[];
+  warnings: string[];
+  status: 'ok' | 'warning' | 'error';
+}
+
+export interface BulkLinkValidationResult {
+  canSave: boolean;
+  summary: {
+    totalRows: number;
+    okRows: number;
+    warningRows: number;
+    errorRows: number;
+  };
+  rows: BulkLinkValidationRow[];
+}
+
 export interface UpdateLinkPayload extends SaveLinkPayload {
   syncBitlyDestination?: boolean;
 }

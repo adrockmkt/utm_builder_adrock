@@ -1,4 +1,4 @@
-import type { AuditLogRecord, AuthUser, CampaignRecord, CreateBitlyResponse, DocumentLinkRecord, HealthRecord, LinkRecord, SaveLinkPayload, SelectOptionCategory, SelectOptionRecord, SettingsRecord, UpdateLinkPayload, UserRecord } from '../types';
+import type { AuditLogRecord, AuthUser, BulkLinkValidationResult, CampaignRecord, CreateBitlyResponse, DocumentLinkRecord, HealthRecord, LinkRecord, SaveLinkPayload, SelectOptionCategory, SelectOptionRecord, SettingsRecord, UpdateLinkPayload, UserRecord } from '../types';
 
 const TOKEN_KEY = 'adrock_utm_builder_token';
 const API_BASE_PATH = normalizeApiBasePath(import.meta.env.VITE_API_BASE_PATH || '/api');
@@ -136,6 +136,17 @@ export const api = {
   listLinks: () => apiFetch<LinkRecord[]>('/utm-links'),
   createLink: (payload: SaveLinkPayload) =>
     apiFetch<{ id: string }>('/utm-links', {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    }),
+  downloadBulkTemplate: () => apiDownload('/utm-links/bulk-template.xlsx'),
+  validateBulkLinks: (payload: { campaignId: string; fileName: string; fileDataBase64: string }) =>
+    apiFetch<BulkLinkValidationResult>('/utm-links/bulk/validate', {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    }),
+  createBulkLinks: (payload: { campaignId: string; fileName: string; fileDataBase64: string }) =>
+    apiFetch<{ success: boolean; createdCount: number; validation: BulkLinkValidationResult }>('/utm-links/bulk', {
       method: 'POST',
       body: JSON.stringify(payload)
     }),

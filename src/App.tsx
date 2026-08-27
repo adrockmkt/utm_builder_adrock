@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Activity, BarChart3, DatabaseBackup, Download, ExternalLink, FileClock, FileText, Link2, LogOut, Pencil, Plus, Settings, ShieldCheck, Users, X } from 'lucide-react';
 import UTMBuilder from './components/UTMBuilder';
 import { api, setStoredToken } from './utils/api';
-import type { AuditLogRecord, AuthUser, CampaignRecord, DocumentLinkRecord, HealthRecord, LinkRecord, SaveLinkPayload, SelectOptionCategory, SelectOptionRecord, SettingsRecord, UpdateLinkPayload, UserRecord } from './types';
+import type { AuditLogRecord, AuthUser, BulkLinkValidationResult, CampaignRecord, DocumentLinkRecord, HealthRecord, LinkRecord, SaveLinkPayload, SelectOptionCategory, SelectOptionRecord, SettingsRecord, UpdateLinkPayload, UserRecord } from './types';
 
 type Section = 'builder' | 'campaigns' | 'links' | 'documents' | 'updates' | 'users' | 'settings' | 'audit';
 type LinkEditForm = UpdateLinkPayload;
@@ -38,6 +38,15 @@ const userRoleLabels: Record<UserRole, string> = {
   viewer: 'Viewer'
 };
 const releaseNotes = [
+  {
+    version: '2026-08-27',
+    title: 'UTMs em lote',
+    items: [
+      'UTM Builder ganhou modo Lote de campanha com download de modelo XLSX, upload, validação prévia e salvamento em massa.',
+      'Links em lote agora precisam estar vinculados a uma campanha cadastrada; o sistema usa o slug da campanha como utm_campaign em todas as linhas.',
+      'A validação mostra erros e avisos por linha antes do salvamento. Linhas com erro devem ser corrigidas na planilha e enviadas novamente.'
+    ]
+  },
   {
     version: '2026-08-17',
     title: 'Perfis de usuários',
@@ -380,12 +389,26 @@ function App() {
 
   async function handleDownloadCsv(kind: 'links' | 'campaigns') {
     const blob = kind === 'links' ? await api.downloadLinksCsv() : await api.downloadCampaignsCsv();
+    downloadBlob(blob, kind === 'links' ? 'utm-links.csv' : 'utm-campaigns.csv');
+  }
+
+  function downloadBlob(blob: Blob, fileName: string) {
     const url = window.URL.createObjectURL(blob);
     const anchor = document.createElement('a');
     anchor.href = url;
-    anchor.download = kind === 'links' ? 'utm-links.csv' : 'utm-campaigns.csv';
+    anchor.download = fileName;
     anchor.click();
     window.URL.revokeObjectURL(url);
+  }
+
+  async function fileToBase64(file: File) {
+    const buffer = await file.arrayBuffer();
+    const bytes = new Uint8Array(buffer);
+    let binary = '';
+    bytes.forEach((byte) => {
+      binary += String.fromCharCode(byte);
+    });
+    return window.btoa(binary);
   }
 
   async function handleCreateCampaign(event: React.FormEvent) {
@@ -469,6 +492,29 @@ function App() {
     } finally {
       setSavingLink(false);
     }
+  }
+
+  async function handleDownloadBulkTemplate() {
+    const blob = await api.downloadBulkTemplate();
+    downloadBlob(blob, 'modelo-utm-lote.xlsx');
+  }
+
+  async function handleValidateBulkLinks({ campaignId, file }: { campaignId: string; file: File }): Promise<BulkLinkValidationResult> {
+    return api.validateBulkLinks({
+      campaignId,
+      fileName: file.name,
+      fileDataBase64: await fileToBase64(file)
+    });
+  }
+
+  async function handleSaveBulkLinks({ campaignId, file }: { campaignId: string; file: File }) {
+    const result = await api.createBulkLinks({
+      campaignId,
+      fileName: file.name,
+      fileDataBase64: await fileToBase64(file)
+    });
+    if (user) await loadAppData(user);
+    return result;
   }
 
   async function handleDeleteCampaign(id: string) {
@@ -890,6 +936,9 @@ function App() {
             utmIdOptions={settings.options.filter((option) => option.category === 'utm_id')}
             onCreateCampaignRequest={() => setActiveSection('campaigns')}
             onSaveLink={handleSaveLink}
+            onDownloadBulkTemplate={handleDownloadBulkTemplate}
+            onValidateBulkLinks={handleValidateBulkLinks}
+            onSaveBulkLinks={handleSaveBulkLinks}
             isSaving={savingLink}
           />
         )}
