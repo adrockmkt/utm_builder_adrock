@@ -49,3 +49,11 @@ export function getBulkValidationStatusMessage({ canSave, warningRows = 0 }) {
 
   return 'Corrija os erros na planilha e suba novamente.';
 }
+
+export function getBulkImportPostSaveView(createdCount) {
+  return {
+    message: `${createdCount} links salvos com sucesso.`,
+    tone: 'green',
+    primaryActionLabel: 'Reiniciar processo'
+  };
+}

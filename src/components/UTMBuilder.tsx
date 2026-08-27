@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { CheckCircle, ChevronDown, ChevronUp, Copy, Download, Info, Link2, Save, Search, Sparkles, Upload, XCircle } from 'lucide-react';
 import { sortAlphabeticallyByLabel, sortSuggestionGroups } from '../utils/alphabeticalOptions.js';
-import { getBulkImportRowStatusView, getBulkImportTutorialSteps, getBulkValidationStatusMessage } from '../utils/bulkImportUi.js';
+import { getBulkImportPostSaveView, getBulkImportRowStatusView, getBulkImportTutorialSteps, getBulkValidationStatusMessage } from '../utils/bulkImportUi.js';
 import { buildGeneratedUrl, CHANNEL_PRESETS, CHANNEL_RULES, type ChannelPreset, type UTMParams, UTM_FIELD_GUIDES, inferPresetFromValues, normalizeUtmDraftValue, normalizeUtmValue, validateUrlString, validateUtmParams } from '../utils/utm';
 import type { BulkLinkValidationResult, CampaignRecord, ChannelPresetRecord, SaveLinkPayload, SelectOptionRecord } from '../types';
 
@@ -385,6 +385,7 @@ const UTMBuilder: React.FC<UTMBuilderProps> = ({
   const [bulkFile, setBulkFile] = useState<File | null>(null);
   const [bulkValidation, setBulkValidation] = useState<BulkLinkValidationResult | null>(null);
   const [bulkStatus, setBulkStatus] = useState('');
+  const [bulkSavedCount, setBulkSavedCount] = useState<number | null>(null);
   const [isBulkProcessing, setIsBulkProcessing] = useState(false);
   const [showBulkCampaignForm, setShowBulkCampaignForm] = useState(false);
   const [bulkCampaignForm, setBulkCampaignForm] = useState<BulkCampaignForm>(emptyBulkCampaignForm);
@@ -444,6 +445,7 @@ const UTMBuilder: React.FC<UTMBuilderProps> = ({
     setBulkFile(null);
     setBulkValidation(null);
     setBulkStatus('');
+    setBulkSavedCount(null);
     setShowBulkCampaignForm(false);
     setBulkCampaignForm(emptyBulkCampaignForm);
     setBulkCampaignStatus('');
@@ -553,6 +555,7 @@ const UTMBuilder: React.FC<UTMBuilderProps> = ({
     setBulkFile(file);
     setBulkValidation(null);
     setBulkStatus('');
+    setBulkSavedCount(null);
 
     if (!file || !onValidateBulkLinks) return;
     if (!selectedCampaignId) {
@@ -590,10 +593,12 @@ const UTMBuilder: React.FC<UTMBuilderProps> = ({
     try {
       const result = await onSaveBulkLinks({ campaignId: selectedCampaignId, file: bulkFile });
       setBulkValidation(result.validation);
-      setBulkStatus(`${result.createdCount} links salvos com sucesso.`);
+      setBulkStatus('');
+      setBulkSavedCount(result.createdCount);
       setBulkFile(null);
     } catch (error) {
       setBulkStatus(error instanceof Error ? error.message : 'Não foi possível salvar o lote.');
+      setBulkSavedCount(null);
     } finally {
       setIsBulkProcessing(false);
     }
@@ -624,6 +629,7 @@ const UTMBuilder: React.FC<UTMBuilderProps> = ({
       setBulkFile(null);
       setBulkValidation(null);
       setBulkStatus('');
+      setBulkSavedCount(null);
     } catch (error) {
       setBulkCampaignStatus(error instanceof Error ? error.message : 'Não foi possível cadastrar a campanha.');
     } finally {
@@ -845,6 +851,7 @@ const UTMBuilder: React.FC<UTMBuilderProps> = ({
                           setBulkFile(null);
                           setBulkValidation(null);
                           setBulkStatus('');
+                          setBulkSavedCount(null);
                           setShowBulkCampaignForm(false);
                           setBulkCampaignStatus('');
                         }}
@@ -878,6 +885,7 @@ const UTMBuilder: React.FC<UTMBuilderProps> = ({
                                   setBulkFile(null);
                                   setBulkValidation(null);
                                   setBulkStatus('');
+                                  setBulkSavedCount(null);
                                   setBulkCampaignStatus('');
                                   return;
                                 }
@@ -942,10 +950,22 @@ const UTMBuilder: React.FC<UTMBuilderProps> = ({
                           file={bulkFile}
                           validation={bulkValidation}
                           status={bulkStatus}
+                          savedCount={bulkSavedCount}
                           isProcessing={isBulkProcessing}
                           onDownloadTemplate={onDownloadBulkTemplate}
                           onFileChange={handleBulkFileChange}
                           onSave={handleSaveBulkLinks}
+                          onReset={() => {
+                            setSelectedCampaignId('');
+                            handleParamChange('campaign', '');
+                            setBulkFile(null);
+                            setBulkValidation(null);
+                            setBulkStatus('');
+                            setBulkSavedCount(null);
+                            setShowBulkCampaignForm(false);
+                            setBulkCampaignForm(emptyBulkCampaignForm);
+                            setBulkCampaignStatus('');
+                          }}
                         />
                       )}
                     </div>
@@ -1319,23 +1339,28 @@ function BulkImportPanel({
   file,
   validation,
   status,
+  savedCount,
   isProcessing,
   onDownloadTemplate,
   onFileChange,
-  onSave
+  onSave,
+  onReset
 }: {
   selectedCampaignId: string;
   file: File | null;
   validation: BulkLinkValidationResult | null;
   status: string;
+  savedCount: number | null;
   isProcessing: boolean;
   onDownloadTemplate?: () => Promise<void>;
   onFileChange: (file: File | null) => void;
   onSave: () => void;
+  onReset: () => void;
 }) {
   const previewRows = validation?.rows.slice(0, 12) || [];
   const tutorialSteps = getBulkImportTutorialSteps({ hasSelectedCampaign: Boolean(selectedCampaignId) });
   const uploadStep = tutorialSteps[1];
+  const postSaveView = savedCount === null ? null : getBulkImportPostSaveView(savedCount);
 
   return (
     <div className="space-y-4 rounded-2xl border border-[#c1d6e9] bg-white p-4">
@@ -1437,15 +1462,31 @@ function BulkImportPanel({
           {validation.rows.length > previewRows.length && (
             <p className="text-xs text-gray-500">Prévia exibindo as primeiras {previewRows.length} linhas de {validation.rows.length}.</p>
           )}
-          <button
-            type="button"
-            onClick={onSave}
-            disabled={!validation.canSave || isProcessing}
-            className="inline-flex items-center rounded-2xl border border-[#ff940e] px-6 py-3 font-semibold text-[#ff940e] disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            <Save className="mr-2 h-4 w-4" />
-            {isProcessing ? 'Salvando lote...' : 'Salvar lote'}
-          </button>
+          {postSaveView && (
+            <p className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-800">
+              {postSaveView.message}
+            </p>
+          )}
+          {postSaveView ? (
+            <button
+              type="button"
+              onClick={onReset}
+              className="inline-flex items-center rounded-2xl border border-[#c1d6e9] bg-white px-6 py-3 font-semibold text-gray-700"
+            >
+              <Sparkles className="mr-2 h-4 w-4" />
+              {postSaveView.primaryActionLabel}
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={onSave}
+              disabled={!validation.canSave || isProcessing}
+              className="inline-flex items-center rounded-2xl border border-[#ff940e] px-6 py-3 font-semibold text-[#ff940e] disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <Save className="mr-2 h-4 w-4" />
+              {isProcessing ? 'Salvando lote...' : 'Salvar lote'}
+            </button>
+          )}
         </div>
       )}
     </div>

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { getBulkImportRowStatusView, getBulkImportTutorialSteps, getBulkValidationStatusMessage } from './bulkImportUi.js';
+import { getBulkImportPostSaveView, getBulkImportRowStatusView, getBulkImportTutorialSteps, getBulkValidationStatusMessage } from './bulkImportUi.js';
 
 test('bulk import tutorial starts after campaign is selected or created', () => {
   const steps = getBulkImportTutorialSteps();
@@ -36,4 +36,12 @@ test('bulk validation message asks attention when warnings exist', () => {
   const message = getBulkValidationStatusMessage({ canSave: true, warningRows: 2 });
 
   assert.equal(message, 'Valide com atenção: há avisos na prévia antes de salvar o lote.');
+});
+
+test('bulk post save view moves success message below validation and resets the process', () => {
+  const view = getBulkImportPostSaveView(10);
+
+  assert.equal(view.message, '10 links salvos com sucesso.');
+  assert.equal(view.tone, 'green');
+  assert.equal(view.primaryActionLabel, 'Reiniciar processo');
 });
