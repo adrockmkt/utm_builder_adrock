@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { CheckCircle, ChevronDown, ChevronUp, Copy, Download, Info, Link2, Save, Search, Sparkles, Upload, XCircle } from 'lucide-react';
 import { sortAlphabeticallyByLabel, sortSuggestionGroups } from '../utils/alphabeticalOptions.js';
+import { getBulkImportTutorialSteps } from '../utils/bulkImportUi.js';
 import { buildGeneratedUrl, CHANNEL_PRESETS, CHANNEL_RULES, type ChannelPreset, type UTMParams, UTM_FIELD_GUIDES, inferPresetFromValues, normalizeUtmDraftValue, normalizeUtmValue, validateUrlString, validateUtmParams } from '../utils/utm';
 import type { BulkLinkValidationResult, CampaignRecord, ChannelPresetRecord, SaveLinkPayload, SelectOptionRecord } from '../types';
 
@@ -72,12 +73,31 @@ interface UTMBuilderProps {
   utmTermOptions?: SelectOptionRecord[];
   utmIdOptions?: SelectOptionRecord[];
   onCreateCampaignRequest?: () => void;
+  onCreateCampaignInline?: (payload: BulkCampaignForm) => Promise<CampaignRecord>;
   onSaveLink?: (payload: SaveLinkPayload) => Promise<void>;
   onDownloadBulkTemplate?: () => Promise<void>;
   onValidateBulkLinks?: (payload: { campaignId: string; file: File }) => Promise<BulkLinkValidationResult>;
   onSaveBulkLinks?: (payload: { campaignId: string; file: File }) => Promise<{ createdCount: number; validation: BulkLinkValidationResult }>;
   isSaving?: boolean;
 }
+
+type BulkCampaignForm = {
+  clientName: string;
+  name: string;
+  startsAt: string;
+  endsAt: string;
+  status: CampaignRecord['status'];
+  description: string;
+};
+
+const emptyBulkCampaignForm: BulkCampaignForm = {
+  clientName: '',
+  name: '',
+  startsAt: '',
+  endsAt: '',
+  status: 'rascunho',
+  description: ''
+};
 
 const fallbackActionTypeOptions = [
   'post_patrocinado',
@@ -314,6 +334,7 @@ const UTMBuilder: React.FC<UTMBuilderProps> = ({
   utmTermOptions = [],
   utmIdOptions = [],
   onCreateCampaignRequest,
+  onCreateCampaignInline,
   onSaveLink,
   onDownloadBulkTemplate,
   onValidateBulkLinks,
@@ -365,6 +386,10 @@ const UTMBuilder: React.FC<UTMBuilderProps> = ({
   const [bulkValidation, setBulkValidation] = useState<BulkLinkValidationResult | null>(null);
   const [bulkStatus, setBulkStatus] = useState('');
   const [isBulkProcessing, setIsBulkProcessing] = useState(false);
+  const [showBulkCampaignForm, setShowBulkCampaignForm] = useState(false);
+  const [bulkCampaignForm, setBulkCampaignForm] = useState<BulkCampaignForm>(emptyBulkCampaignForm);
+  const [bulkCampaignStatus, setBulkCampaignStatus] = useState('');
+  const [isCreatingBulkCampaign, setIsCreatingBulkCampaign] = useState(false);
   const [adGroupName, setAdGroupName] = useState('');
   const [adType, setAdType] = useState(resolvedAdTypeOptions[0].value);
   const [internalName, setInternalName] = useState('');
@@ -419,6 +444,9 @@ const UTMBuilder: React.FC<UTMBuilderProps> = ({
     setBulkFile(null);
     setBulkValidation(null);
     setBulkStatus('');
+    setShowBulkCampaignForm(false);
+    setBulkCampaignForm(emptyBulkCampaignForm);
+    setBulkCampaignStatus('');
     setAdGroupName('');
     setAdType(resolvedAdTypeOptions[0].value);
     setInternalName('');
@@ -568,6 +596,38 @@ const UTMBuilder: React.FC<UTMBuilderProps> = ({
     }
   };
 
+  const handleCreateBulkCampaign = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!onCreateCampaignInline || isCreatingBulkCampaign) return;
+    if (!bulkCampaignForm.name.trim()) {
+      setBulkCampaignStatus('Informe o nome da campanha.');
+      return;
+    }
+
+    setIsCreatingBulkCampaign(true);
+    setBulkCampaignStatus('');
+    try {
+      const campaign = await onCreateCampaignInline({
+        ...bulkCampaignForm,
+        clientName: bulkCampaignForm.clientName.trim(),
+        name: bulkCampaignForm.name.trim(),
+        description: bulkCampaignForm.description.trim()
+      });
+      setSelectedCampaignId(campaign.id);
+      handleParamChange('campaign', campaign.slug);
+      setBulkCampaignForm(emptyBulkCampaignForm);
+      setShowBulkCampaignForm(false);
+      setBulkCampaignStatus('Campanha cadastrada e selecionada para o lote.');
+      setBulkFile(null);
+      setBulkValidation(null);
+      setBulkStatus('');
+    } catch (error) {
+      setBulkCampaignStatus(error instanceof Error ? error.message : 'Não foi possível cadastrar a campanha.');
+    } finally {
+      setIsCreatingBulkCampaign(false);
+    }
+  };
+
   const isExternalActionsPreset = selectedPresetId === 'external-actions';
   const relatedCampaignType = contextType === 'lote' ? 'campanha' : contextType;
   const relatedCampaignOptions = sortAlphabeticallyByLabel(campaigns.filter((campaign) => campaign.type === relatedCampaignType)) as CampaignRecord[];
@@ -631,6 +691,10 @@ const UTMBuilder: React.FC<UTMBuilderProps> = ({
     setSelectedCampaignId(campaignId);
     setBulkValidation(null);
     setBulkStatus('');
+    setBulkCampaignStatus('');
+    if (campaignId) {
+      setShowBulkCampaignForm(false);
+    }
     const campaign = campaigns.find((item) => item.id === campaignId);
     if (campaign) {
       handleParamChange('campaign', campaign.slug);
@@ -778,6 +842,8 @@ const UTMBuilder: React.FC<UTMBuilderProps> = ({
                           setBulkFile(null);
                           setBulkValidation(null);
                           setBulkStatus('');
+                          setShowBulkCampaignForm(false);
+                          setBulkCampaignStatus('');
                         }}
                         className={`rounded-2xl border px-4 py-3 text-left text-sm ${
                           contextType === option.value
@@ -800,7 +866,22 @@ const UTMBuilder: React.FC<UTMBuilderProps> = ({
                         </p>
                         <div className="mt-3 flex flex-wrap gap-2">
                           {onCreateCampaignRequest && (
-                            <button type="button" onClick={onCreateCampaignRequest} className="rounded-xl border border-[#ff940e] bg-white px-3 py-2 text-sm font-medium text-[#9a4a00]">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (contextType === 'lote') {
+                                  setShowBulkCampaignForm(true);
+                                  setSelectedCampaignId('');
+                                  setBulkFile(null);
+                                  setBulkValidation(null);
+                                  setBulkStatus('');
+                                  setBulkCampaignStatus('');
+                                  return;
+                                }
+                                onCreateCampaignRequest();
+                              }}
+                              className="rounded-xl border border-[#ff940e] bg-white px-3 py-2 text-sm font-medium text-[#9a4a00]"
+                            >
                               Não, cadastrar campanha
                             </button>
                           )}
@@ -828,7 +909,23 @@ const UTMBuilder: React.FC<UTMBuilderProps> = ({
                             Este link usará <strong>{selectedCampaign.slug}</strong> no utm_campaign.
                           </p>
                         )}
+                        {contextType === 'lote' && bulkCampaignStatus && !showBulkCampaignForm && (
+                          <p className="mt-2 text-xs font-medium text-emerald-700">{bulkCampaignStatus}</p>
+                        )}
                       </div>
+                      {contextType === 'lote' && showBulkCampaignForm && (
+                        <BulkCampaignInlineForm
+                          form={bulkCampaignForm}
+                          status={bulkCampaignStatus}
+                          isSaving={isCreatingBulkCampaign}
+                          onChange={(field, value) => setBulkCampaignForm((current) => ({ ...current, [field]: value }))}
+                          onSubmit={handleCreateBulkCampaign}
+                          onCancel={() => {
+                            setShowBulkCampaignForm(false);
+                            setBulkCampaignStatus('');
+                          }}
+                        />
+                      )}
                       {contextType !== 'lote' && (
                         <div>
                           <label className="adrock-field-label mb-1 block text-sm font-medium">Grupo de anúncio</label>
@@ -843,7 +940,6 @@ const UTMBuilder: React.FC<UTMBuilderProps> = ({
                           validation={bulkValidation}
                           status={bulkStatus}
                           isProcessing={isBulkProcessing}
-                          onCreateCampaignRequest={onCreateCampaignRequest}
                           onDownloadTemplate={onDownloadBulkTemplate}
                           onFileChange={handleBulkFileChange}
                           onSave={handleSaveBulkLinks}
@@ -1128,13 +1224,99 @@ const UTMBuilder: React.FC<UTMBuilderProps> = ({
   );
 };
 
+function BulkCampaignInlineForm({
+  form,
+  status,
+  isSaving,
+  onChange,
+  onSubmit,
+  onCancel
+}: {
+  form: BulkCampaignForm;
+  status: string;
+  isSaving: boolean;
+  onChange: (field: keyof BulkCampaignForm, value: string) => void;
+  onSubmit: (event: React.FormEvent) => void;
+  onCancel: () => void;
+}) {
+  return (
+    <form onSubmit={onSubmit} className="rounded-2xl border border-[#ffcf92] bg-white p-4">
+      <div>
+        <h4 className="font-semibold text-gray-900">Cadastrar campanha para o lote</h4>
+        <p className="mt-1 text-sm text-gray-700">Crie a campanha aqui e ela já ficará selecionada para o upload da planilha.</p>
+      </div>
+
+      <div className="mt-4 grid gap-3 md:grid-cols-2">
+        <label className="block">
+          <span className="adrock-field-label mb-1 block text-sm font-medium">Nome do cliente</span>
+          <input
+            type="text"
+            value={form.clientName}
+            onChange={(event) => onChange('clientName', event.target.value)}
+            className="w-full px-3 py-2"
+            placeholder="ex: Porvir.org"
+          />
+        </label>
+        <label className="block">
+          <span className="adrock-field-label mb-1 block text-sm font-medium">Nome da campanha</span>
+          <input
+            type="text"
+            value={form.name}
+            onChange={(event) => onChange('name', event.target.value)}
+            className="w-full px-3 py-2"
+            placeholder="ex: Módulo 1"
+            required
+          />
+        </label>
+        <label className="block">
+          <span className="adrock-field-label mb-1 block text-sm font-medium">Início</span>
+          <input type="date" value={form.startsAt} onChange={(event) => onChange('startsAt', event.target.value)} className="w-full px-3 py-2" />
+        </label>
+        <label className="block">
+          <span className="adrock-field-label mb-1 block text-sm font-medium">Fim</span>
+          <input type="date" value={form.endsAt} onChange={(event) => onChange('endsAt', event.target.value)} className="w-full px-3 py-2" />
+        </label>
+        <label className="block">
+          <span className="adrock-field-label mb-1 block text-sm font-medium">Status</span>
+          <select value={form.status} onChange={(event) => onChange('status', event.target.value)} className="w-full px-3 py-2">
+            <option value="rascunho">Rascunho</option>
+            <option value="ativo">Ativo</option>
+            <option value="encerrado">Encerrado</option>
+          </select>
+        </label>
+        <label className="block md:col-span-2">
+          <span className="adrock-field-label mb-1 block text-sm font-medium">Descrição</span>
+          <textarea
+            value={form.description}
+            onChange={(event) => onChange('description', event.target.value)}
+            className="min-h-24 w-full px-3 py-2"
+            placeholder="Contexto da campanha, módulo, etapa ou observações."
+          />
+        </label>
+      </div>
+
+      {status && (
+        <p className="mt-3 rounded-xl border border-yellow-200 bg-yellow-50 px-3 py-2 text-sm text-yellow-900">{status}</p>
+      )}
+
+      <div className="mt-4 flex flex-wrap gap-2">
+        <button type="submit" disabled={isSaving} className="rounded-xl bg-gradient-to-r from-[#ff8a00] to-[#ff1f12] px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">
+          {isSaving ? 'Cadastrando...' : 'Cadastrar campanha'}
+        </button>
+        <button type="button" onClick={onCancel} className="rounded-xl border border-[#c1d6e9] bg-white px-4 py-2 text-sm font-medium text-gray-700">
+          Cancelar
+        </button>
+      </div>
+    </form>
+  );
+}
+
 function BulkImportPanel({
   selectedCampaignId,
   file,
   validation,
   status,
   isProcessing,
-  onCreateCampaignRequest,
   onDownloadTemplate,
   onFileChange,
   onSave
@@ -1144,12 +1326,12 @@ function BulkImportPanel({
   validation: BulkLinkValidationResult | null;
   status: string;
   isProcessing: boolean;
-  onCreateCampaignRequest?: () => void;
   onDownloadTemplate?: () => Promise<void>;
   onFileChange: (file: File | null) => void;
   onSave: () => void;
 }) {
   const previewRows = validation?.rows.slice(0, 12) || [];
+  const tutorialSteps = getBulkImportTutorialSteps();
 
   return (
     <div className="space-y-4 rounded-2xl border border-[#c1d6e9] bg-white p-4">
@@ -1160,27 +1342,18 @@ function BulkImportPanel({
         </p>
       </div>
 
-      <div className="grid gap-3 md:grid-cols-3">
+      <div className="grid gap-3 md:grid-cols-2">
         <div className="rounded-2xl border border-[#d9e7f4] bg-[#f8fbff] p-3">
-          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-gray-500">1. Campanha</p>
-          <p className="mt-2 text-sm text-gray-700">Selecione ou crie a campanha antes do upload.</p>
-          {onCreateCampaignRequest && (
-            <button type="button" onClick={onCreateCampaignRequest} className="mt-3 rounded-xl border border-[#ff940e] bg-white px-3 py-2 text-sm font-medium text-[#9a4a00]">
-              Cadastrar campanha
-            </button>
-          )}
-        </div>
-        <div className="rounded-2xl border border-[#d9e7f4] bg-[#f8fbff] p-3">
-          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-gray-500">2. Modelo</p>
-          <p className="mt-2 text-sm text-gray-700">Use sempre o XLSX do sistema para incluir todos os campos obrigatórios.</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-gray-500">{tutorialSteps[0].title}</p>
+          <p className="mt-2 text-sm text-gray-700">{tutorialSteps[0].description}</p>
           <button type="button" onClick={onDownloadTemplate} disabled={!onDownloadTemplate} className="mt-3 inline-flex items-center rounded-xl border border-[#c1d6e9] bg-white px-3 py-2 text-sm font-medium text-gray-700 disabled:opacity-50">
             <Download className="mr-2 h-4 w-4" />
             Baixar XLSX
           </button>
         </div>
         <div className="rounded-2xl border border-[#d9e7f4] bg-[#f8fbff] p-3">
-          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-gray-500">3. Upload</p>
-          <p className="mt-2 text-sm text-gray-700">A validação roda antes do salvamento.</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-gray-500">{tutorialSteps[1].title}</p>
+          <p className="mt-2 text-sm text-gray-700">{tutorialSteps[1].description}</p>
           <label className={`mt-3 inline-flex cursor-pointer items-center rounded-xl border px-3 py-2 text-sm font-medium ${selectedCampaignId ? 'border-[#c1d6e9] bg-white text-gray-700' : 'border-gray-200 bg-gray-100 text-gray-400'}`}>
             <Upload className="mr-2 h-4 w-4" />
             Subir XLSX

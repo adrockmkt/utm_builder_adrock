@@ -7,6 +7,14 @@ import type { AuditLogRecord, AuthUser, BulkLinkValidationResult, CampaignRecord
 type Section = 'builder' | 'campaigns' | 'links' | 'documents' | 'updates' | 'users' | 'settings' | 'audit';
 type LinkEditForm = UpdateLinkPayload;
 type UserRole = UserRecord['role'];
+type BulkCampaignForm = {
+  clientName: string;
+  name: string;
+  startsAt: string;
+  endsAt: string;
+  status: CampaignRecord['status'];
+  description: string;
+};
 type CampaignEditForm = {
   clientName: string;
   name: string;
@@ -428,6 +436,28 @@ function App() {
       description: ''
     });
     if (user) await loadAppData(user);
+  }
+
+  async function handleCreateCampaignInline(payload: BulkCampaignForm) {
+    const result = await api.createCampaign({
+      clientName: payload.clientName,
+      name: payload.name,
+      type: 'campanha',
+      mainChannel: 'Multicanal',
+      defaultSource: '',
+      defaultMedium: '',
+      startsAt: payload.startsAt,
+      endsAt: payload.endsAt,
+      status: payload.status,
+      description: payload.description
+    });
+    const campaignsResult = await api.listCampaigns();
+    setCampaigns(campaignsResult);
+    const createdCampaign = campaignsResult.find((campaign) => campaign.id === result.id);
+    if (!createdCampaign) {
+      throw new Error('Campanha criada, mas não foi possível selecioná-la automaticamente.');
+    }
+    return createdCampaign;
   }
 
   function handleStartEditCampaign(campaign: CampaignRecord) {
@@ -936,6 +966,7 @@ function App() {
             utmTermOptions={settings.options.filter((option) => option.category === 'utm_term')}
             utmIdOptions={settings.options.filter((option) => option.category === 'utm_id')}
             onCreateCampaignRequest={() => setActiveSection('campaigns')}
+            onCreateCampaignInline={handleCreateCampaignInline}
             onSaveLink={handleSaveLink}
             onDownloadBulkTemplate={handleDownloadBulkTemplate}
             onValidateBulkLinks={handleValidateBulkLinks}
