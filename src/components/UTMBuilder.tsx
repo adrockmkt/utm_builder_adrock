@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { CheckCircle, ChevronDown, ChevronUp, Copy, Download, Info, Link2, Save, Search, Sparkles, Upload, XCircle } from 'lucide-react';
 import { sortAlphabeticallyByLabel, sortSuggestionGroups } from '../utils/alphabeticalOptions.js';
-import { getBulkImportTutorialSteps } from '../utils/bulkImportUi.js';
+import { getBulkImportRowStatusView, getBulkImportTutorialSteps, getBulkValidationStatusMessage } from '../utils/bulkImportUi.js';
 import { buildGeneratedUrl, CHANNEL_PRESETS, CHANNEL_RULES, type ChannelPreset, type UTMParams, UTM_FIELD_GUIDES, inferPresetFromValues, normalizeUtmDraftValue, normalizeUtmValue, validateUrlString, validateUtmParams } from '../utils/utm';
 import type { BulkLinkValidationResult, CampaignRecord, ChannelPresetRecord, SaveLinkPayload, SelectOptionRecord } from '../types';
 
@@ -568,7 +568,10 @@ const UTMBuilder: React.FC<UTMBuilderProps> = ({
     try {
       const validation = await onValidateBulkLinks({ campaignId: selectedCampaignId, file });
       setBulkValidation(validation);
-      setBulkStatus(validation.canSave ? 'Planilha validada. Revise a prévia e salve o lote.' : 'Corrija os erros na planilha e suba novamente.');
+      setBulkStatus(getBulkValidationStatusMessage({
+        canSave: validation.canSave,
+        warningRows: validation.summary.warningRows
+      }));
     } catch (error) {
       setBulkStatus(error instanceof Error ? error.message : 'Não foi possível validar a planilha.');
     } finally {
@@ -1379,7 +1382,7 @@ function BulkImportPanel({
         <p className="text-sm text-gray-600">Arquivo selecionado: <strong>{file.name}</strong></p>
       )}
       {status && (
-        <p className={`rounded-xl border px-3 py-2 text-sm ${validation?.canSave ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-yellow-200 bg-yellow-50 text-yellow-900'}`}>
+        <p className={`rounded-xl border px-3 py-2 text-sm ${validation?.canSave && !validation.summary.warningRows ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-red-200 bg-red-50 text-red-900'}`}>
           {isProcessing ? 'Processando planilha...' : status}
         </p>
       )}
@@ -1403,17 +1406,23 @@ function BulkImportPanel({
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#edf3f9] bg-white">
-                {previewRows.map((row) => (
-                  <tr key={row.rowNumber}>
-                    <td className="px-3 py-2 font-mono">{row.rowNumber}</td>
-                    <td className="px-3 py-2 font-semibold">{row.status}</td>
-                    <td className="px-3 py-2">{row.normalized.internalName || '-'}</td>
-                    <td className="max-w-[20rem] break-all px-3 py-2">{row.normalized.finalUrl || '-'}</td>
-                    <td className="min-w-[16rem] px-3 py-2">
-                      {[...row.errors, ...row.warnings].join(' | ') || 'Sem mensagens.'}
-                    </td>
-                  </tr>
-                ))}
+                {previewRows.map((row) => {
+                  const statusView = getBulkImportRowStatusView(row.status);
+                  const issueCellClass = statusView.tone === 'red'
+                    ? 'bg-red-50 text-red-900 ring-1 ring-inset ring-red-100'
+                    : 'bg-emerald-50 text-emerald-800 ring-1 ring-inset ring-emerald-100';
+                  return (
+                    <tr key={row.rowNumber}>
+                      <td className="px-3 py-2 font-mono">{row.rowNumber}</td>
+                      <td className={`px-3 py-2 font-semibold ${issueCellClass}`}>{statusView.label}</td>
+                      <td className="px-3 py-2">{row.normalized.internalName || '-'}</td>
+                      <td className="max-w-[20rem] break-all px-3 py-2">{row.normalized.finalUrl || '-'}</td>
+                      <td className={`min-w-[16rem] px-3 py-2 ${row.errors.length || row.warnings.length ? issueCellClass : ''}`}>
+                        {[...row.errors, ...row.warnings].join(' | ') || 'Sem mensagens.'}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
