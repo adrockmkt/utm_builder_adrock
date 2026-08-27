@@ -1382,7 +1382,13 @@ function BulkImportPanel({
         <p className="text-sm text-gray-600">Arquivo selecionado: <strong>{file.name}</strong></p>
       )}
       {status && (
-        <p className={`rounded-xl border px-3 py-2 text-sm ${validation?.canSave && !validation.summary.warningRows ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-red-200 bg-red-50 text-red-900'}`}>
+        <p className={`rounded-xl border px-3 py-2 text-sm ${
+          validation?.canSave && !validation.summary.warningRows
+            ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+            : validation?.canSave
+              ? 'border-yellow-200 bg-yellow-50 text-yellow-900'
+              : 'border-red-200 bg-red-50 text-red-900'
+        }`}>
           {isProcessing ? 'Processando planilha...' : status}
         </p>
       )}
@@ -1410,7 +1416,9 @@ function BulkImportPanel({
                   const statusView = getBulkImportRowStatusView(row.status);
                   const issueCellClass = statusView.tone === 'red'
                     ? 'bg-red-50 text-red-900 ring-1 ring-inset ring-red-100'
-                    : 'bg-emerald-50 text-emerald-800 ring-1 ring-inset ring-emerald-100';
+                    : statusView.tone === 'yellow'
+                      ? 'bg-yellow-50 text-yellow-900 ring-1 ring-inset ring-yellow-100'
+                      : 'bg-emerald-50 text-emerald-800 ring-1 ring-inset ring-emerald-100';
                   return (
                     <tr key={row.rowNumber}>
                       <td className="px-3 py-2 font-mono">{row.rowNumber}</td>

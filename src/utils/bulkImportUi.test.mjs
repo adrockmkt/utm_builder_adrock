@@ -18,11 +18,11 @@ test('bulk import upload step encourages upload after campaign selection', () =>
   assert.equal(uploadStep?.readyMessage, '🙂 Beleza, siga com a subida do arquivo.');
 });
 
-test('bulk import warning status asks for careful validation in red', () => {
+test('bulk import warning status asks for careful validation in yellow', () => {
   const view = getBulkImportRowStatusView('warning');
 
   assert.equal(view.label, 'Valide com atenção');
-  assert.equal(view.tone, 'red');
+  assert.equal(view.tone, 'yellow');
 });
 
 test('bulk import error status is highlighted in red', () => {

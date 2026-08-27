@@ -28,7 +28,7 @@ export function getBulkImportRowStatusView(status) {
   if (status === 'warning') {
     return {
       label: 'Valide com atenção',
-      tone: 'red'
+      tone: 'yellow'
     };
   }
 

@@ -8,7 +8,7 @@ export type BulkImportTutorialStep = {
 
 export type BulkImportRowStatusView = {
   label: string;
-  tone: 'green' | 'red';
+  tone: 'green' | 'yellow' | 'red';
 };
 
 export function getBulkImportTutorialSteps(options?: { hasSelectedCampaign?: boolean }): BulkImportTutorialStep[];
