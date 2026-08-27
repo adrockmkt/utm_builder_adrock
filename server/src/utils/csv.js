@@ -12,10 +12,14 @@ function escapeCsvValue(value) {
     return '';
   }
 
-  const text = String(value);
+  const text = escapeSpreadsheetFormula(String(value));
   if (/[",\n\r]/.test(text)) {
     return `"${text.replace(/"/g, '""')}"`;
   }
 
   return text;
+}
+
+function escapeSpreadsheetFormula(value) {
+  return /^[=+\-@\t\r]/.test(value) ? `'${value}` : value;
 }

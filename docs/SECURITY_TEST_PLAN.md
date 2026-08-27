@@ -190,7 +190,7 @@ Verificar:
 - sem directory listing
 - sem stack trace
 - headers basicos de seguranca enviados pelo Helmet na API
-- `client_max_body_size 4m` no Nginx
+- `client_max_body_size 10m` no Nginx
 - proxy so expoe `/api` necessario
 
 ## Testes de rate limit

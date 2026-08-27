@@ -28,7 +28,7 @@ app.use(rateLimit({
   legacyHeaders: false
 }));
 app.use(morgan(env.nodeEnv === 'production' ? 'combined' : 'dev'));
-app.use(express.json({ limit: '4mb' }));
+app.use(express.json({ limit: '10mb' }));
 
 app.get('/', (_req, res) => {
   res.json({

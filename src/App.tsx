@@ -44,7 +44,8 @@ const releaseNotes = [
     items: [
       'UTM Builder ganhou modo Lote de campanha com download de modelo XLSX, upload, validação prévia e salvamento em massa.',
       'Links em lote agora precisam estar vinculados a uma campanha cadastrada; o sistema usa o slug da campanha como utm_campaign em todas as linhas.',
-      'A validação mostra erros e avisos por linha antes do salvamento. Linhas com erro devem ser corrigidas na planilha e enviadas novamente.'
+      'A validação mostra erros e avisos por linha antes do salvamento. Linhas com erro devem ser corrigidas na planilha e enviadas novamente.',
+      'Upload de planilhas XLSX foi preparado para até 10 MB no backend e no Nginx.'
     ]
   },
   {

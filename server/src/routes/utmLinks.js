@@ -58,8 +58,8 @@ router.post('/bulk/validate', async (req, res) => {
   let rows;
   try {
     rows = await parseWorkbookRows(fileDataBase64);
-  } catch {
-    return res.status(400).json({ error: 'Não foi possível ler o XLSX. Baixe o modelo oficial, preencha novamente e suba a planilha.' });
+  } catch (error) {
+    return res.status(400).json({ error: getWorkbookErrorMessage(error) });
   }
   const existingFinalUrls = await listExistingFinalUrls();
   const validation = validateBulkUtmRows({ campaign, rows, existingFinalUrls });
@@ -73,8 +73,8 @@ router.post('/bulk', async (req, res) => {
   let rows;
   try {
     rows = await parseWorkbookRows(fileDataBase64);
-  } catch {
-    return res.status(400).json({ error: 'Não foi possível ler o XLSX. Baixe o modelo oficial, preencha novamente e suba a planilha.' });
+  } catch (error) {
+    return res.status(400).json({ error: getWorkbookErrorMessage(error) });
   }
   const existingFinalUrls = await listExistingFinalUrls();
   const validation = validateBulkUtmRows({ campaign, rows, existingFinalUrls });
@@ -445,6 +445,7 @@ async function listExistingFinalUrls() {
 }
 
 async function parseWorkbookRows(fileDataBase64) {
+  const maxBulkRows = 500;
   if (!fileDataBase64) {
     return [];
   }
@@ -464,7 +465,11 @@ async function parseWorkbookRows(fileDataBase64) {
     table.push(values);
   });
 
-  return normalizeWorksheetRows(table);
+  const rows = normalizeWorksheetRows(table);
+  if (rows.length > maxBulkRows) {
+    throw new Error(`A planilha pode ter no máximo ${maxBulkRows} linhas por lote.`);
+  }
+  return rows;
 }
 
 function getCellText(cell) {
@@ -477,4 +482,12 @@ function getCellText(cell) {
     if ('richText' in cell.value) return cell.value.richText.map((part) => part.text).join('');
   }
   return String(cell.value);
+}
+
+function getWorkbookErrorMessage(error) {
+  const message = error instanceof Error ? error.message : '';
+  if (message.startsWith('A planilha pode ter no máximo')) {
+    return message;
+  }
+  return 'Não foi possível ler o XLSX. Baixe o modelo oficial, preencha novamente e suba a planilha.';
 }
