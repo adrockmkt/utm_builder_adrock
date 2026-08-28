@@ -374,6 +374,7 @@ const VIDEO_SOURCES = ['youtube', 'tiktok', 'vimeo'];
 const PAID_MEDIUMS = ['cpc', 'ppc', 'paidsearch', 'paid_search', 'paidshopping', 'paid_shopping', 'paidvideo', 'paid_video', 'retargeting', 'paid'];
 const EMAIL_VALUES = ['email', 'e-mail', 'e_mail', 'e mail'];
 const ALLOWED_VALUE_REGEX = /^[a-z0-9_-]+$/;
+const SOURCE_CONSISTENCY_FIELDS: Array<keyof Pick<UTMParams, 'campaign' | 'term' | 'content' | 'id'>> = ['campaign', 'term', 'content', 'id'];
 
 export function normalizeUtmValue(value: string) {
   return value
@@ -474,6 +475,24 @@ export function detectChannelGrouping(source: string, medium: string) {
   return 'Unassigned';
 }
 
+function findConflictingSourceMentions(normalizedValues: Partial<UTMParams>) {
+  const source = normalizedValues.source || '';
+  if (!source || !SOCIAL_SOURCES.includes(source)) return [];
+
+  const mentionedSources = new Set<string>();
+  SOURCE_CONSISTENCY_FIELDS.forEach((field) => {
+    const value = normalizedValues[field] || '';
+    const tokens = value.split(/[_-]+/).filter(Boolean);
+    SOCIAL_SOURCES.forEach((socialSource) => {
+      if (socialSource !== source && tokens.includes(socialSource)) {
+        mentionedSources.add(socialSource);
+      }
+    });
+  });
+
+  return Array.from(mentionedSources).sort();
+}
+
 export function validateUtmParams(params: Partial<UTMParams>, expectedPresetId?: string | null, presets: ChannelPreset[] = CHANNEL_PRESETS): ValidationResult {
   const normalizedValues = {
     source: normalizeUtmValue(params.source || ''),
@@ -492,6 +511,7 @@ export function validateUtmParams(params: Partial<UTMParams>, expectedPresetId?:
   if (!normalizedValues.campaign) errors.push({ field: 'campaign', message: 'utm_campaign é obrigatório.' });
 
   UTM_FIELD_GUIDES.forEach((guide) => {
+    if (guide.key === 'url') return;
     const value = normalizedValues[guide.key];
     if (!value) return;
 
@@ -507,6 +527,14 @@ export function validateUtmParams(params: Partial<UTMParams>, expectedPresetId?:
   if (params.source && params.source !== normalizedValues.source) warnings.push({ field: 'source', message: 'utm_source será normalizado para minúsculas e sem espaços.' });
   if (params.medium && params.medium !== normalizedValues.medium) warnings.push({ field: 'medium', message: 'utm_medium será normalizado para minúsculas e sem espaços.' });
   if (params.campaign && params.campaign !== normalizedValues.campaign) warnings.push({ field: 'campaign', message: 'utm_campaign será normalizado para minúsculas e sem espaços.' });
+
+  const conflictingSourceMentions = findConflictingSourceMentions(normalizedValues);
+  if (conflictingSourceMentions.length > 0) {
+    warnings.push({
+      field: 'source',
+      message: `utm_source está como ${normalizedValues.source}, mas outros campos citam ${conflictingSourceMentions.join(', ')}. Confira se a rede escolhida está consistente em toda a URL.`
+    });
+  }
 
   const detectedPreset = inferPresetFromValues(normalizedValues.source, normalizedValues.medium, presets);
   if (expectedPresetId) {
