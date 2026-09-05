@@ -12,6 +12,8 @@ export const env = {
   setupToken: process.env.SETUP_TOKEN || '',
   rateLimitWindowMs: Number(process.env.RATE_LIMIT_WINDOW_MS || 15 * 60 * 1000),
   rateLimitMax: Number(process.env.RATE_LIMIT_MAX || 300),
+  authRateLimitWindowMs: Number(process.env.AUTH_RATE_LIMIT_WINDOW_MS || 15 * 60 * 1000),
+  authRateLimitMax: Number(process.env.AUTH_RATE_LIMIT_MAX || 10),
   backupDir: process.env.BACKUP_DIR || '/var/backups/utm_builder',
   bitlyEnabled: process.env.BITLY_ENABLED === 'true',
   bitlyAccessToken: process.env.BITLY_ACCESS_TOKEN || '',

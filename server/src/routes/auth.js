@@ -1,15 +1,29 @@
+import crypto from 'node:crypto';
 import { Router } from 'express';
-import rateLimit from 'express-rate-limit';
+import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import { env } from '../config/env.js';
 import { pool } from '../db/pool.js';
-import { buildSetupStatus, canRunInitialSetup, loginRateLimitOptions } from '../security/publicSurface.js';
+import { buildSetupStatus, canRunInitialSetup } from '../security/publicSurface.js';
 import { logAudit } from '../utils/audit.js';
 import { createSessionExpiry, generateId, generateToken, hashPassword, verifyPassword } from '../utils/security.js';
 
 const router = Router();
+const authLimiter = rateLimit({
+  windowMs: env.authRateLimitWindowMs,
+  max: env.authRateLimitMax,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: loginRateLimitKey
+});
+const setupLimiter = rateLimit({
+  windowMs: env.authRateLimitWindowMs,
+  max: Math.min(env.authRateLimitMax, 5),
+  standardHeaders: true,
+  legacyHeaders: false
+});
 
 function readSetupToken(req) {
-  return req.get('x-setup-token') || '';
+  return req.get('x-setup-token') || req.body?.setupToken || '';
 }
 
 router.get('/setup-status', async (req, res) => {
@@ -30,7 +44,7 @@ router.get('/setup-status', async (req, res) => {
   }));
 });
 
-router.post('/setup', async (req, res) => {
+router.post('/setup', setupLimiter, async (req, res) => {
   const countResult = await pool.query('select count(*)::int as total from users');
   const setupDecision = canRunInitialSetup({
     nodeEnv: env.nodeEnv,
@@ -67,7 +81,7 @@ router.post('/setup', async (req, res) => {
   });
 });
 
-router.post('/login', rateLimit(loginRateLimitOptions), async (req, res) => {
+router.post('/login', authLimiter, async (req, res) => {
   const { email, password } = req.body;
   if (!email || !password) {
     return res.status(400).json({ error: 'Email e senha são obrigatórios.' });
@@ -177,3 +191,27 @@ router.post('/logout', async (req, res) => {
 });
 
 export default router;
+
+export function isSetupRequestAllowed({ configuredToken, providedToken, nodeEnv = env.nodeEnv }) {
+  const token = String(configuredToken || '').trim();
+  if (!token) {
+    return nodeEnv !== 'production';
+  }
+
+  return timingSafeStringEqual(String(providedToken || ''), token);
+}
+
+export function loginRateLimitKey(req) {
+  const email = String(req.body?.email || '').trim().toLowerCase();
+  return `${ipKeyGenerator(req.ip)}:${email || 'unknown'}`;
+}
+
+function timingSafeStringEqual(received, expected) {
+  const receivedBuffer = Buffer.from(received);
+  const expectedBuffer = Buffer.from(expected);
+  if (receivedBuffer.length !== expectedBuffer.length) {
+    return false;
+  }
+
+  return crypto.timingSafeEqual(receivedBuffer, expectedBuffer);
+}

@@ -4,38 +4,54 @@ import path from 'node:path';
 import { env } from '../config/env.js';
 import { pool } from '../db/pool.js';
 import { requireAuth } from '../middleware/auth.js';
-import { buildDetailedHealth, buildPublicHealth } from '../security/publicSurface.js';
 
 const router = Router();
 
 router.get('/', async (_req, res) => {
-  try {
-    await pool.query('select 1');
-    res.json(buildPublicHealth('ok'));
-  } catch {
-    res.status(500).json(buildPublicHealth('error'));
-  }
+  const status = await getHealthStatus();
+  res.status(status.status === 'ok' ? 200 : 500).json(toPublicHealthResponse(status));
 });
 
 router.get('/details', requireAuth, async (_req, res) => {
+  const status = await getHealthStatus();
+  res.status(status.status === 'ok' ? 200 : 500).json(toPrivateHealthResponse(status));
+});
+
+async function getHealthStatus() {
   try {
     await pool.query('select 1');
     const backup = await getLatestBackup();
-    res.json(buildDetailedHealth({
+    return {
       status: 'ok',
       database: 'connected',
       backup
-    }));
+    };
   } catch (error) {
     const backup = await getLatestBackup();
-    res.status(500).json(buildDetailedHealth({
+    return {
       status: 'error',
       database: 'disconnected',
       backup,
       details: error instanceof Error ? error.message : 'unknown'
-    }));
+    };
   }
-});
+}
+
+export function toPublicHealthResponse(status) {
+  return {
+    status: status.status,
+    service: 'adrock-utm-builder-api'
+  };
+}
+
+export function toPrivateHealthResponse(status) {
+  return {
+    status: status.status,
+    service: 'adrock-utm-builder-api',
+    database: status.database,
+    backup: status.backup
+  };
+}
 
 async function getLatestBackup() {
   try {

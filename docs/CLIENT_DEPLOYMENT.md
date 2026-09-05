@@ -47,8 +47,11 @@ CORS_ORIGIN=https://utm.cliente.com.br
 DATABASE_URL=postgres://usuario:senha@host:5432/adrock_utm_builder
 DATABASE_SSL=true
 JWT_SECRET=gere-um-segredo-longo-com-openssl-rand-hex-32
+SETUP_TOKEN=gere-um-token-temporario-para-o-primeiro-admin
 RATE_LIMIT_WINDOW_MS=900000
 RATE_LIMIT_MAX=300
+AUTH_RATE_LIMIT_WINDOW_MS=900000
+AUTH_RATE_LIMIT_MAX=10
 BITLY_ENABLED=false
 BITLY_ACCESS_TOKEN=
 BITLY_GROUP_GUID=
@@ -132,10 +135,10 @@ https://utm.cliente.com.br
 
 Validar:
 
-- Tela de setup inicial aparece no primeiro acesso
+- Tela de setup inicial aparece no primeiro acesso e aceita o `SETUP_TOKEN` temporario
 - Admin inicial e criado
 - Login funciona
-- Health mostra banco conectado
+- Health publico responde apenas status do servico
 - Area `Cadastros` permite cadastrar nomes de clientes para uso nas campanhas
 - Campanha pode ser criada
 - Campanha pode ser editada, incluindo cliente, nome, datas, status e descricao

@@ -152,8 +152,11 @@ DATABASE_URL=postgres://usuario:senha@host:5432/adrock_utm_builder
 DATABASE_ALLOW_LOCAL=true
 DATABASE_SSL=false
 JWT_SECRET=cole-aqui-um-segredo-forte
+SETUP_TOKEN=cole-aqui-um-token-temporario-para-setup
 RATE_LIMIT_WINDOW_MS=900000
 RATE_LIMIT_MAX=300
+AUTH_RATE_LIMIT_WINDOW_MS=900000
+AUTH_RATE_LIMIT_MAX=10
 BITLY_ENABLED=false
 BITLY_ACCESS_TOKEN=
 BITLY_GROUP_GUID=
@@ -165,6 +168,8 @@ Gerar segredo:
 ```bash
 openssl rand -hex 32
 ```
+
+Depois de criar o primeiro administrador, remova ou rotacione `SETUP_TOKEN` e reinicie a API.
 
 Instalar dependencias do backend:
 

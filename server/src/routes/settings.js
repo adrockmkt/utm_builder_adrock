@@ -16,8 +16,7 @@ function requireSuperUser(req, res, next) {
 }
 
 router.get('/public-brand', async (_req, res) => {
-  const appSettings = await loadBrandSettings();
-  res.json(toBrandSettings(appSettings));
+  res.json(toPublicBrandSettings({}));
 });
 
 router.use(requireAuth);
@@ -107,7 +106,7 @@ router.delete('/brand-logo', requireSuperUser, async (req, res) => {
          updated_by = $2,
          updated_at = now()
      where key = 'top_logo_url'`,
-    ['/utm-builder/adrock-logo.png', req.auth.user.id]
+    ['adrock-logo.png', req.auth.user.id]
   );
   await logAudit({
     req,
@@ -281,14 +280,29 @@ async function loadBrandSettings() {
   return Object.fromEntries(result.rows.map((row) => [row.key, row.value]));
 }
 
-function toBrandSettings(appSettings) {
+export function toBrandSettings(appSettings) {
   return {
     appName: appSettings.app_name || 'Ad Rock UTM Builder',
-    topLogoUrl: appSettings.top_logo_url || '/utm-builder/adrock-logo.png',
+    topLogoUrl: appSettings.top_logo_url || 'adrock-logo.png',
     topLogoSize: 56,
     funGifUrl: appSettings.fun_gif_url || '',
     funGifSize: 128
   };
+}
+
+export function toPublicBrandSettings(appSettings) {
+  const brand = toBrandSettings(appSettings);
+  return {
+    ...brand,
+    topLogoUrl: isPublicImageReference(brand.topLogoUrl) ? brand.topLogoUrl : 'adrock-logo.png',
+    funGifUrl: isPublicImageReference(brand.funGifUrl) ? brand.funGifUrl : ''
+  };
+}
+
+function isPublicImageReference(value) {
+  if (!value) return false;
+  if (value.startsWith('/') || value.startsWith('https://')) return true;
+  return /^[a-z0-9][a-z0-9._/-]*$/i.test(value) && !value.includes('..');
 }
 
 function normalizeValue(value) {

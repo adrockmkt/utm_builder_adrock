@@ -180,7 +180,7 @@ function App() {
     dateTo: '',
     bitly: ''
   });
-  const [authForm, setAuthForm] = useState({ name: '', email: '', password: '' });
+  const [authForm, setAuthForm] = useState({ name: '', email: '', password: '', setupToken: '' });
   const [loginForm, setLoginForm] = useState({ email: '', password: '' });
   const [campaignForm, setCampaignForm] = useState({
     clientName: '',
@@ -340,7 +340,7 @@ function App() {
 
   async function loadAppData(currentUser: AuthUser) {
     const [healthResult, campaignsResult, linksResult, documentsResult, usersResult, auditLogsResult, settingsResult] = await Promise.all([
-      api.health().catch(() => null),
+      api.healthDetails().catch(() => null),
       api.listCampaigns(),
       api.listLinks(),
       api.listDocuments(),
@@ -363,7 +363,7 @@ function App() {
     event.preventDefault();
     await api.setupAdmin(authForm);
     setSetupRequired(false);
-    setAuthForm({ name: '', email: '', password: '' });
+    setAuthForm({ name: '', email: '', password: '', setupToken: '' });
     alert('Administrador inicial criado. Faça login para continuar.');
   }
 
@@ -852,6 +852,7 @@ function App() {
           <Input label="Nome" value={authForm.name} onChange={(value) => setAuthForm((current) => ({ ...current, name: value }))} />
           <Input label="Email" type="email" value={authForm.email} onChange={(value) => setAuthForm((current) => ({ ...current, email: value }))} />
           <Input label="Senha" type="password" value={authForm.password} onChange={(value) => setAuthForm((current) => ({ ...current, password: value }))} />
+          <Input label="Token de setup" type="password" value={authForm.setupToken} onChange={(value) => setAuthForm((current) => ({ ...current, setupToken: value }))} />
           <button className="w-full rounded-2xl bg-[linear-gradient(135deg,#ff940e_0%,#ff0e03_100%)] px-5 py-3 font-semibold text-white">
             Criar administrador inicial
           </button>

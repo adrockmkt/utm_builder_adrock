@@ -64,7 +64,7 @@ async function apiDownload(path: string): Promise<Blob> {
 
 export const api = {
   getSetupStatus: () => apiFetch<{ setupRequired: boolean }>('/auth/setup-status'),
-  setupAdmin: (payload: { name: string; email: string; password: string }) =>
+  setupAdmin: (payload: { name: string; email: string; password: string; setupToken?: string }) =>
     apiFetch<{ message: string }>('/auth/setup', {
       method: 'POST',
       body: JSON.stringify(payload)
@@ -79,7 +79,8 @@ export const api = {
     apiFetch<{ success: boolean }>('/auth/logout', {
       method: 'POST'
     }),
-  health: () => apiFetch<HealthRecord>('/health/details'),
+  health: () => apiFetch<HealthRecord>('/health'),
+  healthDetails: () => apiFetch<HealthRecord>('/health/details'),
   listUsers: () => apiFetch<UserRecord[]>('/users'),
   createUser: (payload: { name: string; email: string; password: string; role: UserRecord['role'] }) =>
     apiFetch<{ id: string }>('/users', {

@@ -353,7 +353,7 @@ where id not in (
 );
 
 insert into app_settings (key, value)
-values ('top_logo_url', '/utm-builder/adrock-logo.png')
+values ('top_logo_url', 'adrock-logo.png')
 on conflict (key) do nothing;
 
 insert into app_settings (key, value)
