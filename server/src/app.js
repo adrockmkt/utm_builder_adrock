@@ -12,6 +12,7 @@ import exportRoutes from './routes/exports.js';
 import healthRoutes from './routes/health.js';
 import settingsRoutes from './routes/settings.js';
 import slackRoutes from './routes/slack.js';
+import { buildApiInfo } from './security/publicSurface.js';
 import userRoutes from './routes/users.js';
 import utmCampaignRoutes from './routes/utmCampaigns.js';
 import utmLinkRoutes from './routes/utmLinks.js';
@@ -31,11 +32,7 @@ app.use(morgan(env.nodeEnv === 'production' ? 'combined' : 'dev'));
 app.use(express.json({ limit: '10mb' }));
 
 app.get('/', (_req, res) => {
-  res.json({
-    name: 'Ad Rock UTM Builder API',
-    mode: 'single-tenant',
-    awsReady: true
-  });
+  res.json(buildApiInfo());
 });
 
 app.use('/api/health', healthRoutes);

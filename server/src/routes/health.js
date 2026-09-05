@@ -3,28 +3,37 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { env } from '../config/env.js';
 import { pool } from '../db/pool.js';
+import { requireAuth } from '../middleware/auth.js';
+import { buildDetailedHealth, buildPublicHealth } from '../security/publicSurface.js';
 
 const router = Router();
 
 router.get('/', async (_req, res) => {
   try {
     await pool.query('select 1');
+    res.json(buildPublicHealth('ok'));
+  } catch {
+    res.status(500).json(buildPublicHealth('error'));
+  }
+});
+
+router.get('/details', requireAuth, async (_req, res) => {
+  try {
+    await pool.query('select 1');
     const backup = await getLatestBackup();
-    res.json({
+    res.json(buildDetailedHealth({
       status: 'ok',
-      service: 'adrock-utm-builder-api',
       database: 'connected',
       backup
-    });
+    }));
   } catch (error) {
     const backup = await getLatestBackup();
-    res.status(500).json({
+    res.status(500).json(buildDetailedHealth({
       status: 'error',
-      service: 'adrock-utm-builder-api',
       database: 'disconnected',
       backup,
       details: error instanceof Error ? error.message : 'unknown'
-    });
+    }));
   }
 });
 

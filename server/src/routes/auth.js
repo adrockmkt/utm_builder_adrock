@@ -1,21 +1,45 @@
 import { Router } from 'express';
+import rateLimit from 'express-rate-limit';
+import { env } from '../config/env.js';
 import { pool } from '../db/pool.js';
+import { buildSetupStatus, canRunInitialSetup, loginRateLimitOptions } from '../security/publicSurface.js';
 import { logAudit } from '../utils/audit.js';
 import { createSessionExpiry, generateId, generateToken, hashPassword, verifyPassword } from '../utils/security.js';
 
 const router = Router();
 
-router.get('/setup-status', async (_req, res) => {
+function readSetupToken(req) {
+  return req.get('x-setup-token') || '';
+}
+
+router.get('/setup-status', async (req, res) => {
   const result = await pool.query('select count(*)::int as total from users');
-  res.json({
-    setupRequired: result.rows[0].total === 0
-  });
+  const userCount = result.rows[0].total;
+  const setupAllowed = canRunInitialSetup({
+    nodeEnv: env.nodeEnv,
+    userCount,
+    setupToken: env.setupToken,
+    providedSetupToken: readSetupToken(req)
+  }).allowed;
+
+  res.json(buildSetupStatus({
+    nodeEnv: env.nodeEnv,
+    userCount,
+    setupTokenConfigured: Boolean(env.setupToken),
+    setupTokenProvided: setupAllowed
+  }));
 });
 
 router.post('/setup', async (req, res) => {
   const countResult = await pool.query('select count(*)::int as total from users');
-  if (countResult.rows[0].total > 0) {
-    return res.status(409).json({ error: 'Setup inicial já foi concluído.' });
+  const setupDecision = canRunInitialSetup({
+    nodeEnv: env.nodeEnv,
+    userCount: countResult.rows[0].total,
+    setupToken: env.setupToken,
+    providedSetupToken: readSetupToken(req)
+  });
+  if (!setupDecision.allowed) {
+    return res.status(setupDecision.status).json({ error: setupDecision.error });
   }
 
   const { name, email, password } = req.body;
@@ -43,7 +67,7 @@ router.post('/setup', async (req, res) => {
   });
 });
 
-router.post('/login', async (req, res) => {
+router.post('/login', rateLimit(loginRateLimitOptions), async (req, res) => {
   const { email, password } = req.body;
   if (!email || !password) {
     return res.status(400).json({ error: 'Email e senha são obrigatórios.' });

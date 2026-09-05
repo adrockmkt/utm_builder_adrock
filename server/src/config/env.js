@@ -9,6 +9,7 @@ export const env = {
   databaseAllowLocal: process.env.DATABASE_ALLOW_LOCAL === 'true',
   databaseSsl: process.env.DATABASE_SSL === 'true',
   jwtSecret: process.env.JWT_SECRET || 'change-me',
+  setupToken: process.env.SETUP_TOKEN || '',
   rateLimitWindowMs: Number(process.env.RATE_LIMIT_WINDOW_MS || 15 * 60 * 1000),
   rateLimitMax: Number(process.env.RATE_LIMIT_MAX || 300),
   backupDir: process.env.BACKUP_DIR || '/var/backups/utm_builder',

@@ -79,7 +79,7 @@ export const api = {
     apiFetch<{ success: boolean }>('/auth/logout', {
       method: 'POST'
     }),
-  health: () => apiFetch<HealthRecord>('/health'),
+  health: () => apiFetch<HealthRecord>('/health/details'),
   listUsers: () => apiFetch<UserRecord[]>('/users'),
   createUser: (payload: { name: string; email: string; password: string; role: UserRecord['role'] }) =>
     apiFetch<{ id: string }>('/users', {
