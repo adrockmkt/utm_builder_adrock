@@ -46,7 +46,7 @@ sudo systemctl status utm-builder-api --no-pager
 sudo nginx -t
 ```
 
-A resposta publica de `/api/health` deve conter apenas `status` e `service`. Detalhes de banco e backup devem ficar fora do health publico.
+A resposta publica de `/api/health` deve ser `401` sem token. Detalhes de banco e backup devem ficar fora de qualquer resposta publica.
 
 Tambem confirmar que existe backup recente:
 

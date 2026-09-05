@@ -1,17 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { toBrandSettings, toPublicBrandSettings } from './settings.js';
-
-test('toPublicBrandSettings omits database-backed image data URLs from anonymous responses', () => {
-  assert.deepEqual(toPublicBrandSettings({}), {
-    appName: 'Ad Rock UTM Builder',
-    topLogoUrl: 'adrock-logo.png',
-    topLogoSize: 56,
-    funGifUrl: '',
-    funGifSize: 128
-  });
-});
+import { toBrandSettings } from './settings.js';
 
 test('toBrandSettings keeps full brand data for authenticated settings', () => {
   const settings = {

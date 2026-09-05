@@ -7,15 +7,21 @@ import { requireAuth } from '../middleware/auth.js';
 
 const router = Router();
 
-router.get('/', async (_req, res) => {
-  const status = await getHealthStatus();
-  res.status(status.status === 'ok' ? 200 : 500).json(toPublicHealthResponse(status));
-});
+router.use(requireAuth);
 
-router.get('/details', requireAuth, async (_req, res) => {
+router.get('/', async (_req, res) => {
   const status = await getHealthStatus();
   res.status(status.status === 'ok' ? 200 : 500).json(toPrivateHealthResponse(status));
 });
+
+export function toPrivateHealthResponse(status) {
+  return {
+    status: status.status,
+    service: 'adrock-utm-builder-api',
+    database: status.database,
+    backup: status.backup
+  };
+}
 
 async function getHealthStatus() {
   try {
@@ -26,31 +32,14 @@ async function getHealthStatus() {
       database: 'connected',
       backup
     };
-  } catch (error) {
+  } catch {
     const backup = await getLatestBackup();
     return {
       status: 'error',
       database: 'disconnected',
-      backup,
-      details: error instanceof Error ? error.message : 'unknown'
+      backup
     };
   }
-}
-
-export function toPublicHealthResponse(status) {
-  return {
-    status: status.status,
-    service: 'adrock-utm-builder-api'
-  };
-}
-
-export function toPrivateHealthResponse(status) {
-  return {
-    status: status.status,
-    service: 'adrock-utm-builder-api',
-    database: status.database,
-    backup: status.backup
-  };
 }
 
 async function getLatestBackup() {

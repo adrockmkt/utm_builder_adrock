@@ -80,7 +80,7 @@ export const api = {
       method: 'POST'
     }),
   health: () => apiFetch<HealthRecord>('/health'),
-  healthDetails: () => apiFetch<HealthRecord>('/health/details'),
+  healthDetails: () => apiFetch<HealthRecord>('/health'),
   listUsers: () => apiFetch<UserRecord[]>('/users'),
   createUser: (payload: { name: string; email: string; password: string; role: UserRecord['role'] }) =>
     apiFetch<{ id: string }>('/users', {

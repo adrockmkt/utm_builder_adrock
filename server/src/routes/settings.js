@@ -15,11 +15,12 @@ function requireSuperUser(req, res, next) {
   next();
 }
 
-router.get('/public-brand', async (_req, res) => {
-  res.json(toPublicBrandSettings({}));
-});
-
 router.use(requireAuth);
+
+router.get('/public-brand', async (_req, res) => {
+  const appSettings = await loadBrandSettings();
+  res.json(toBrandSettings(appSettings));
+});
 
 router.get('/', async (_req, res) => {
   const [optionsResult, presetsResult, appSettingsResult] = await Promise.all([
@@ -288,21 +289,6 @@ export function toBrandSettings(appSettings) {
     funGifUrl: appSettings.fun_gif_url || '',
     funGifSize: 128
   };
-}
-
-export function toPublicBrandSettings(appSettings) {
-  const brand = toBrandSettings(appSettings);
-  return {
-    ...brand,
-    topLogoUrl: isPublicImageReference(brand.topLogoUrl) ? brand.topLogoUrl : 'adrock-logo.png',
-    funGifUrl: isPublicImageReference(brand.funGifUrl) ? brand.funGifUrl : ''
-  };
-}
-
-function isPublicImageReference(value) {
-  if (!value) return false;
-  if (value.startsWith('/') || value.startsWith('https://')) return true;
-  return /^[a-z0-9][a-z0-9._/-]*$/i.test(value) && !value.includes('..');
 }
 
 function normalizeValue(value) {
